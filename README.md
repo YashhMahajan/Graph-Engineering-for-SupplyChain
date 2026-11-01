@@ -178,7 +178,7 @@ python scripts/acquire_smoke.py && python scripts/run_pipeline.py --profile smok
 import json
 from scgraph import KGStore, Grounder, exposure_paths, exposure_report, to_markdown, to_cyclonedx
 
-store = KGStore("data/graph")            # memory-mapped, loads in milliseconds on smoke
+store = KGStore("data/graph")  # memory-mapped, loads in milliseconds on smoke
 grounder = Grounder(store)
 
 # Free text to a package, no model involved
@@ -202,9 +202,9 @@ The building blocks also work without a graph:
 from scgraph import base_score, band, resolve, satisfies
 
 base_score([{"type": "CVSS_V3", "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H"}])  # 10.0
-band(10.0)                                                       # 'critical'
+band(10.0)  # 'critical'
 resolve("^4.17.0", ["4.16.0", "4.17.15", "4.17.21", "5.0.0"], "npm")  # '4.17.21'
-satisfies("2.14.1", "[2.0,2.15.0)", "maven")                     # True
+satisfies("2.14.1", "[2.0,2.15.0)", "maven")  # True
 ```
 
 Common use cases: gate a CI build on exposures that have a real path, answer "are we hit
@@ -212,6 +212,20 @@ by CVE-X?" across a portfolio during an incident, rank fixes by blast radius, an
 a path-annotated SBOM to a release.
 
 ---
+
+## Use the engine on your own graph
+
+The CVE pipeline runs on a domain-agnostic core, [`scgraph.core`](docs/core.md):
+
+- typed nodes and named relations
+- per-edge confidence, validity window and source
+- path search whose output is evidence
+- a gate ladder that alerts or abstains with a reason
+- a bitemporal, hash-chained ledger that answers "what did we know, and when" and issues
+  verifiable receipts
+
+Software is one adapter (`scgraph.adapters.software`); writing another means choosing
+node keys, relations and gates. See [`docs/core.md`](docs/core.md).
 
 ## Headline results
 

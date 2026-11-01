@@ -4,6 +4,20 @@ This file records all important changes to this project. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **`scgraph.core`**, the domain-agnostic engine: `TypedGraph` (typed nodes, named
+  relations, per-edge confidence, validity window and provenance, content fingerprint,
+  pickle-free mmap persistence), `find_paths` (evidence paths with product confidence
+  and explicit truncation), `Ladder`/`Gate` (alert or abstain with a reason) and
+  `Ledger` (bitemporal, hash-chained, file-locked change log with as-of views,
+  compaction and verifiable answer receipts).
+- **`scgraph.adapters.software`**: the CVE pipeline on the core engine; publication
+  dates become edge validity, so as-of audits use the same mechanism as any domain.
+- `docs/core.md`.
+
 ## [1.0.0] - 2026-11-01
 
 First public release. The pipeline was built and validated on the full open-source
