@@ -1,0 +1,32 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "scgraph: Graph Engineering for Software Supply-Chain Impact Analysis"
+abstract: >-
+  A local pipeline over the open-source dependency graph. It uses zero LLM calls to
+  build the graph. It tells if a project is exposed to a vulnerability, through which
+  dependency path, and which fix is safe. If it cannot support an alert with a
+  resolvable path, it abstains. Validated on 4.46 million packages, 21.4 million
+  versions, and 82.8 million resolved dependency edges across eight ecosystems.
+type: software
+authors:
+  - family-names: Mahajan
+    given-names: Yashh
+version: 1.0.0
+date-released: 2026-11-01
+license: Apache-2.0
+repository-code: "https://github.com/YashhMahajan/Graph-Engineering-for-SupplyChain"
+keywords:
+  - supply-chain security
+  - dependency graph
+  - graph engineering
+  - vulnerability management
+  - software bill of materials
+references:
+  - type: article
+    title: "Graph Engineering in the Era of LLM Agents"
+    authors:
+      - name: "The authors of arXiv:2608.21156"
+    identifiers:
+      - type: other
+        value: "arXiv:2608.21156v2"
+    notes: "The survey that this pipeline uses as its model."
