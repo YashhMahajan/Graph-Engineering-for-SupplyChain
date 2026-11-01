@@ -53,7 +53,9 @@ def _sha256(p: Path, buf: int = 1 << 20) -> str:
 def _download(url: str, dest: Path) -> None:
     dest.parent.mkdir(parents=True, exist_ok=True)
     print(f"  GET {url}")
-    with urllib.request.urlopen(url) as r, dest.open("wb") as fh:
+    if not url.startswith("https://"):
+        raise SystemExit(f"refusing non-HTTPS download: {url}")
+    with urllib.request.urlopen(url, timeout=120) as r, dest.open("wb") as fh:
         total = int(r.headers.get("Content-Length", 0))
         read = 0
         while chunk := r.read(1 << 20):
@@ -74,6 +76,11 @@ def main() -> None:
     )
     p.add_argument("--list", action="store_true", help="list the artifact sets and exit")
     p.add_argument("--keep-archives", action="store_true")
+    p.add_argument(
+        "--allow-unverified",
+        action="store_true",
+        help="extract assets that have no pinned sha256 (not recommended; see SECURITY.md)",
+    )
     a = p.parse_args()
 
     if a.list or not a.set:
@@ -88,12 +95,20 @@ def main() -> None:
     base = _release_base(a.tag)
     for asset, (want_sha, dest) in ARTIFACTS[a.set].items():
         archive = root / asset
+        if not want_sha and not a.allow_unverified:
+            raise SystemExit(
+                f"{asset} has no pinned sha256 in ARTIFACTS, so its integrity cannot be "
+                "checked. Pin the hash from the release notes, or pass --allow-unverified "
+                "to accept the risk explicitly."
+            )
         _download(f"{base}/{asset}", archive)
         if want_sha:
             got = _sha256(archive)
             if got != want_sha:
                 raise SystemExit(f"sha256 mismatch for {asset}: {got} != {want_sha}")
             print("  sha256 ok")
+        else:
+            print("  WARNING: extracting without integrity check (--allow-unverified)")
         print(f"  extracting -> {dest}")
         with tarfile.open(archive) as tf:
             tf.extractall(root / dest, filter="data")

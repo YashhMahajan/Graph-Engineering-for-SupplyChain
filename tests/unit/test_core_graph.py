@@ -119,3 +119,35 @@ def test_exact_max_paths_is_not_truncated():
     assert len(paths) == 1 and not trunc
     paths, trunc = find_paths(g, [0], ["x"], lambda v: v != 0, max_paths=1)
     assert len(paths) == 1 and trunc
+
+
+def test_keys_are_pickle_free_and_fingerprint_stable(tmp_path):
+    g = TypedGraph.build([("ä/1", "n"), ("", "n"), ("b", "m")], {"x": EdgeBatch([0], [2])})
+    fp = g.save(tmp_path / "g")
+    h = TypedGraph.load(tmp_path / "g")
+    assert list(h.keys) == ["ä/1", "", "b"] and h.node("b") == 2
+    assert h.fingerprint() == fp == g.fingerprint()
+    assert h.save(tmp_path / "h") == fp  # re-saving a loaded graph keeps identity
+    for f in (tmp_path / "g").glob("*.npy"):
+        np.load(f, allow_pickle=False)
+
+
+def test_binary_search_lookup_and_order_is_fingerprinted(tmp_path):
+    keys = ["b", "a", "ä", "aa", "", "日本", "Z"]
+    g = TypedGraph.build([(k, "n") for k in keys], {})
+    for i, k in enumerate(keys):
+        assert g.node(k) == i
+    assert g.node("missing") == -1 and g.node("ab") == -1
+    assert list(g.nodes(["Z", "nope", "a"])) == [6, -1, 1]
+    g.save(tmp_path / "g")
+    order = np.load(tmp_path / "g" / "keys.order.npy")
+    np.save(tmp_path / "g" / "keys.order.npy", order[::-1].copy())
+    with pytest.raises(ValueError, match="fingerprint"):
+        TypedGraph.load(tmp_path / "g")
+
+
+def test_from_arrays_validates():
+    with pytest.raises(ValueError, match="unique"):
+        TypedGraph.from_arrays(["a", "a"], np.zeros(2), ["n"], {})
+    with pytest.raises(ValueError, match="type"):
+        TypedGraph.from_arrays(["a"], np.array([3]), ["n"], {})

@@ -46,6 +46,9 @@ smoke: ## Acquire the smoke corpus and run the pipeline end to end
 graph: ## Rebuild the CSR graph store from data/parquet
 	$(BIN)/python scripts/build_graph.py
 
+bench: ## Benchmark build, load and audit latency on a synthetic 2M-version graph
+	$(BIN)/python scripts/bench/bench_kgstore.py --versions 2000000 --audits 1000
+
 notebook: ## Execute the notebook on the smoke profile (overwrites its outputs locally)
 	$(BIN)/python scripts/_run_notebook.py notebooks/supply_chain_graph_engineering.ipynb scgraph 1500
 

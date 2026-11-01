@@ -35,8 +35,10 @@ from typing import Literal
 
 import numpy as np
 
+from .strings import StrColumn
+
 OPEN = np.iinfo(np.int64).max  # valid_to of an edge that has not been retired
-_FORMAT = "scgraph.core.graph/1"
+_FORMAT = "scgraph.core.graph/2"
 
 
 def csr(src: np.ndarray, dst: np.ndarray, n: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -53,8 +55,7 @@ def csr(src: np.ndarray, dst: np.ndarray, n: int) -> tuple[np.ndarray, np.ndarra
         raise ValueError(f"edge endpoint out of range [0, {n})")
     order = np.argsort(src, kind="stable")
     indptr = np.zeros(n + 1, np.int64)
-    np.add.at(indptr, src[order] + 1, 1)
-    np.cumsum(indptr, out=indptr)
+    np.cumsum(np.bincount(src, minlength=n), out=indptr[1:])
     return indptr, dst[order].astype(np.int32), order
 
 
@@ -136,11 +137,11 @@ class TypedGraph:
 
     node_type: np.ndarray  # int16 per node, index into type_names
     type_names: list[str]
-    keys: np.ndarray  # object array of str, stable external id per node
+    keys: StrColumn  # str per node: stable external id
     relations: dict[str, Relation]
     sources: list[str]
     meta: dict = field(default_factory=dict)
-    _key_index: dict[str, int] | None = field(default=None, repr=False)
+    _key_order: np.ndarray | None = field(default=None, repr=False)
 
     # ------------------------------------------------------------------ build
     @classmethod
@@ -159,12 +160,40 @@ class TypedGraph:
         for k, t in nodes:
             keys.append(str(k))
             types.append(str(t))
-        if len(set(keys)) != len(keys):
-            raise ValueError("node keys must be unique")
         type_names = sorted(set(types))
         tix = {t: i for i, t in enumerate(type_names)}
-        n = len(keys)
         node_type = np.array([tix[t] for t in types], np.int16)
+        return cls.from_arrays(keys, node_type, type_names, edges, meta)
+
+    @classmethod
+    def from_arrays(
+        cls,
+        keys,
+        node_type: np.ndarray,
+        type_names: list[str],
+        edges: dict[str, EdgeBatch],
+        meta: dict | None = None,
+    ) -> TypedGraph:
+        """Columnar constructor for large graphs: ``keys`` is a list, an Arrow string
+        array or a ``StrColumn``; ``node_type`` holds indices into ``type_names``.
+        No per-node Python work, so a 20M-node graph builds in seconds."""
+        import pyarrow as pa
+        import pyarrow.compute as pc
+
+        if isinstance(keys, StrColumn):
+            kcol = keys
+        elif isinstance(keys, pa.Array | pa.ChunkedArray):
+            kcol = StrColumn(*StrColumn.encode_arrow(keys))
+        else:
+            kcol = StrColumn(*StrColumn.encode(keys))
+        n = len(kcol)
+        node_type = np.asarray(node_type, np.int16)
+        if node_type.shape != (n,):
+            raise ValueError("node_type must have one entry per key")
+        if n and (node_type.min() < 0 or node_type.max() >= len(type_names)):
+            raise ValueError("node_type index out of range of type_names")
+        if n and pc.count_distinct(kcol.to_arrow()).as_py() != n:
+            raise ValueError("node keys must be unique")
         sources: list[str] = []
         six: dict[str, int] = {}
         rels: dict[str, Relation] = {}
@@ -179,15 +208,24 @@ class TypedGraph:
             vt = _col(eb.valid_to, m, OPEN, np.int64)
             if m and (vt <= vf).any():
                 raise ValueError(f"{name}: valid_to must be > valid_from for every edge")
-            srcs = [eb.source] * m if isinstance(eb.source, str) else list(eb.source)
-            if len(srcs) != m:
-                raise ValueError(f"{name}: source must be a str or one entry per edge")
-            sid = np.array([six.setdefault(s, len(six)) for s in srcs], np.int32)
+            if isinstance(eb.source, str):
+                sid = np.full(m, six.setdefault(eb.source, len(six)), np.int32)
+            else:
+                # factorise in C: unique labels + inverse, then map labels to global ids
+                raw = np.asarray(list(eb.source), dtype=object).astype(str)
+                if len(raw) != m:
+                    raise ValueError(f"{name}: source must be a str or one entry per edge")
+                if m:
+                    labels, inv = np.unique(raw, return_inverse=True)
+                    gid = np.array([six.setdefault(str(x), len(six)) for x in labels], np.int32)
+                    sid = gid[np.asarray(inv, np.int64)]
+                else:
+                    sid = np.zeros(0, np.int32)
             rels[name] = _relation(name, src, dst, n, conf, vf, vt, sid)
         sources = [None] * len(six)  # type: ignore[list-item]
         for s, i in six.items():
             sources[i] = s
-        return cls(node_type, type_names, np.array(keys, dtype=object), rels, sources, meta or {})
+        return cls(node_type, list(type_names), kcol, rels, sources, meta or {})
 
     # ------------------------------------------------------------------ lookup
     @property
@@ -202,9 +240,29 @@ class TypedGraph:
 
     def node(self, key: str) -> int:
         """External key -> node id, or -1."""
-        if self._key_index is None:
-            self._key_index = {str(k): i for i, k in enumerate(self.keys)}
-        return self._key_index.get(key, -1)
+        return self.keys.find(key, self.key_order)
+
+    @property
+    def key_order(self) -> np.ndarray:
+        """Node ids sorted by key: the lookup index. Computed in C once (and persisted by
+        ``save``), so a lookup is a binary search with no per-node Python."""
+        if self._key_order is None:
+            self._key_order = self.keys.sort_order()
+        return self._key_order
+
+    def nodes(self, keys: list[str]) -> np.ndarray:
+        """Many keys -> node ids (-1 where unknown) in one vectorised pass.
+
+        Uses an Arrow hash join over the key column, so resolving a batch of keys never
+        builds a Python dict over every node in the graph.
+        """
+        if not keys:
+            return np.empty(0, np.int64)
+        import pyarrow as pa
+        import pyarrow.compute as pc
+
+        ids = pc.index_in(pa.array(keys, pa.large_string()), value_set=self.keys.to_arrow())
+        return ids.fill_null(-1).to_numpy(zero_copy_only=False).astype(np.int64)
 
     def type_of(self, node: int) -> str:
         return self.type_names[int(self.node_type[node])]
@@ -234,7 +292,15 @@ class TypedGraph:
         h = hashlib.sha256(_FORMAT.encode())
         h.update(json.dumps([self.type_names, self.sources], sort_keys=True).encode())
         _hash_arr(h, self.node_type)
-        h.update("\x1f".join(map(str, self.keys)).encode())
+        # keys as their canonical string-column encoding (offsets + UTF-8 blob): hashing
+        # two flat buffers, with no per-key Python, whatever form the keys are in
+        if isinstance(self.keys, StrColumn):
+            blob, off = np.asarray(self.keys._blob), np.asarray(self.keys._off)
+        else:
+            blob, off = StrColumn.encode(self.keys)
+        _hash_arr(h, off)
+        _hash_arr(h, blob)
+        _hash_arr(h, np.asarray(self.key_order, np.int64))  # the lookup index is covered too
         for name in sorted(self.relations):
             r = self.relations[name]
             h.update(name.encode())
@@ -248,7 +314,8 @@ class TypedGraph:
         d = Path(path)
         d.mkdir(parents=True, exist_ok=True)
         np.save(d / "node_type.npy", self.node_type)
-        (d / "keys.json").write_text(json.dumps([str(k) for k in self.keys]))
+        StrColumn.save(d / "keys", self.keys)
+        np.save(d / "keys.order.npy", self.key_order)
         for name, r in self.relations.items():
             _check_name(name)
             for f in _REL_FIELDS:
@@ -278,8 +345,10 @@ class TypedGraph:
         for name in man["relations"]:
             _check_name(name)
             rels[name] = Relation(name, *(load(f"rel.{name}.{f}.npy") for f in _REL_FIELDS))
-        keys = np.array(json.loads((d / "keys.json").read_text()), dtype=object)
+        keys = StrColumn.load(d / "keys")
+        order = load("keys.order.npy")
         g = cls(load("node_type.npy"), man["type_names"], keys, rels, man["sources"], man["meta"])
+        g._key_order = order
         if verify and g.fingerprint() != man["fingerprint"]:
             raise ValueError(f"fingerprint mismatch for {d}: the graph on disk was modified")
         return g

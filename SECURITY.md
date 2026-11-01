@@ -9,8 +9,29 @@ graph construction. Know these items:
 - The evaluation and acquisition scripts run `git clone`, `curl` or `aria2c`, `tar`, and
   (for the osv-scanner comparison) a downloaded binary. These scripts run only when you
   start them. They do not keep credentials.
-- `scripts/fetch_artifacts.py` downloads release assets. When a release exists, the
-  script compares each asset with a recorded sha256.
+- `scripts/fetch_artifacts.py` downloads release assets over HTTPS only and checks each
+  against a sha256 pinned in the script before extracting it. An asset without a pinned
+  hash is refused unless you pass `--allow-unverified`. Archives are extracted with
+  tarfile's `data` filter (no absolute paths, `..`, links out of the tree or devices).
+
+## Threat model for data files
+
+Graph directories and ledgers are data you may download or share, so loading them never
+executes code:
+
+- **No pickle anywhere on the load path.** Every `.npy` is opened with
+  `allow_pickle=False`; strings are stored as a UTF-8 blob plus offsets. A graph
+  directory written by scgraph 1.0 (pickled object arrays) is refused with an error.
+  Convert it once with `python -m scgraph.kgstore --migrate DIR`, and only for a
+  directory you built or verified, because that one step does unpickle.
+- **Tamper evidence.** `scgraph.core.TypedGraph` snapshots are content-addressed and
+  verified against their SHA-256 fingerprint on load, including the key lookup index.
+  The `Ledger` log is hash-chained, so editing, reordering or deleting history fails
+  `verify()`. The chain proves integrity relative to its head: someone who can rewrite
+  the whole directory can forge a consistent new history, so anchor `Ledger.head`
+  somewhere outside your control when that matters.
+- **Path safety.** Relation names are restricted to `[A-Za-z0-9_-]` before they become
+  file names.
 
 ## Report a vulnerability
 

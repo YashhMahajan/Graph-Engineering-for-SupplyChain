@@ -60,3 +60,11 @@ def test_undated_advisory_is_not_knowable_as_of():
     advs = {"adv:A|A": software.Advisory("adv:A|A", "A", "A", 9.0, False, None)}
     assert software.audit(g, advs, "r", as_of="2020-01-01")["findings"] == []
     assert software.audit(g, advs, "r")["findings"][0]["alert"]
+
+
+def test_timestamp_column_handles_mixed_formats():
+    from scgraph.adapters.software import _MIN, _ts_column
+
+    out = _ts_column(["2021-12-10", "2021-12-10T12:00:00Z", "", None, "garbage", "2021-12-10 "])
+    day = 1639094400
+    assert out.tolist() == [day, day + 43200, _MIN, _MIN, _MIN, day]

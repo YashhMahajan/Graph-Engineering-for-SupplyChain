@@ -39,6 +39,7 @@ from typing import Any
 import numpy as np
 
 from .graph import OPEN, Relation, TypedGraph, _check_name, _relation
+from .strings import StrColumn
 
 GENESIS = "0" * 64
 
@@ -443,8 +444,14 @@ def _apply(base: TypedGraph, deltas: list[Delta]) -> TypedGraph:
     new_types: list[str] = []
     new_index: dict[str, int] = {}
 
+    wanted = sorted(
+        {d.body[f] for d in deltas if d.op != "add_node" for f in ("src", "dst")}
+        | {d.body["key"] for d in deltas if d.op == "add_node"}
+    )
+    known = dict(zip(wanted, base.nodes(wanted).tolist()))
+
     def nid(key: str, where: str) -> int:
-        i = base.node(key)
+        i = known.get(key, -1)
         if i < 0:
             i = new_index.get(key, -1)
         if i < 0:
@@ -459,7 +466,7 @@ def _apply(base: TypedGraph, deltas: list[Delta]) -> TypedGraph:
     for d in deltas:
         b = d.body
         if d.op == "add_node":
-            if base.node(b["key"]) >= 0 or b["key"] in new_index:
+            if known.get(b["key"], -1) >= 0 or b["key"] in new_index:
                 raise LedgerError(f"delta {d.seq}: node {b['key']!r} already exists")
             new_index[b["key"]] = nb + len(new_keys)
             new_keys.append(b["key"])
@@ -507,7 +514,7 @@ def _apply(base: TypedGraph, deltas: list[Delta]) -> TypedGraph:
         node_type = np.concatenate(
             [remap[np.asarray(base.node_type)], [type_names.index(t) for t in new_types]]
         ).astype(np.int16)
-        keys = np.concatenate([np.asarray(base.keys, dtype=object), np.array(new_keys, object)])
+        keys = StrColumn.concat(base.keys, new_keys)
     else:
         node_type, keys = base.node_type, base.keys
     n = nb + len(new_keys)

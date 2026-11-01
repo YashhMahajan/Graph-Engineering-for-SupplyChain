@@ -17,6 +17,29 @@ This file records all important changes to this project. The format follows
 - **`scgraph.adapters.software`**: the CVE pipeline on the core engine; publication
   dates become edge validity, so as-of audits use the same mechanism as any domain.
 - `docs/core.md`.
+- `scripts/bench/bench_kgstore.py` and `make bench`: build, load and audit latency on a
+  synthetic heavy-tailed graph of any size.
+
+### Changed
+
+- **Graph store no longer uses pickle.** String columns are a UTF-8 blob plus int64
+  offsets, memory-mapped (`scgraph.core.strings.StrColumn`). Loading a graph directory
+  can no longer execute code. Directories from 1.0 are refused with a clear error;
+  convert them with `python -m scgraph.kgstore --migrate DIR`.
+- **Faster.** Measured with `make bench` on 2M versions / 8M edges, same machine:
+  `KGStore()` load 1.27 s -> 0.06 s (21x); `build` 22.1 s -> 6.8 s (3.3x);
+  `adapters.software.from_kgstore` 29.0 s -> 12.5 s; first core key lookup 1.4 s -> 0 on a
+  loaded graph (persisted sort order + binary search). Ledger views at 1M nodes / 5M edges:
+  first verified snapshot load 1.2 s -> 0.6 s.
+- `scripts/fetch_artifacts.py` refuses to extract assets without a pinned sha256 unless
+  `--allow-unverified` is passed, refuses non-HTTPS URLs and times out stalled downloads.
+- `scgraph.core.graph` on-disk format is now `/2` (keys as a string column plus a
+  fingerprinted lookup index).
+
+### Fixed
+
+- `paths.exposure_paths(min_severity=...)` was ignored; it now drops advisories scored
+  below the floor (unscored advisories are kept, as the ladder does).
 
 ## [1.0.0] - 2026-11-01
 
