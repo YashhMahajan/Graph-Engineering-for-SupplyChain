@@ -104,9 +104,9 @@ def find_paths(
         frontier = list(layer)
         for v in frontier:
             if is_target(v):
-                out.append(layer[v])
                 if len(out) >= max_paths:
-                    return out, True
+                    return out, True  # a target beyond the cap exists
+                out.append(layer[v])
         if truncated:
             break
     if frontier and not truncated:

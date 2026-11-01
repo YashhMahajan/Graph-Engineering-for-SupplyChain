@@ -114,6 +114,7 @@ def exposures(
     *,
     as_of=None,
     max_depth: int = 12,
+    min_confidence: float = 0.0,
 ) -> tuple[list[Exposure], bool]:
     """Every (advisory, shortest path) reaching ``root_key``'s resolved tree.
 
@@ -125,17 +126,28 @@ def exposures(
         raise KeyError(f"unknown root {root_key!r}")
     t = to_ts(as_of)
     aff = g.rel("affects")
+
+    def visible(v: int) -> tuple[np.ndarray, np.ndarray]:
+        nbrs, eids = aff.out_edges(v, as_of=t, min_confidence=min_confidence)
+        if t is not None:
+            # an advisory with no publish date cannot be shown knowable on any date
+            m = aff.valid_from[eids] != _MIN
+            nbrs, eids = nbrs[m], eids[m]
+        return nbrs, eids
+
     paths, truncated = find_paths(
         g,
         [root],
         ["resolves_to"],
-        lambda v: len(aff.out_edges(v, as_of=t)[0]) > 0,
+        lambda v: len(visible(v)[0]) > 0,
         as_of=t,
         max_depth=max_depth,
+        # applied during search, so a weak short path cannot mask a strong longer one
+        min_path_confidence=min_confidence,
     )
     out = []
     for p in paths:
-        nbrs, eids = aff.out_edges(p.terminal, as_of=t)
+        nbrs, eids = visible(p.terminal)
         for a, e in zip(nbrs.tolist(), eids.tolist()):
             hop = Path(
                 (*p.nodes, a), (*p.edges, ("affects", e)), p.confidence * float(aff.confidence[e])
@@ -176,7 +188,7 @@ def audit(
     min_confidence: float = 0.0,
 ) -> dict:
     """One root -> a deterministic, JSON-serialisable verdict per advisory."""
-    ex, truncated = exposures(g, advisories, root_key, as_of=as_of)
+    ex, truncated = exposures(g, advisories, root_key, as_of=as_of, min_confidence=min_confidence)
     by: dict[str, list[Exposure]] = {}
     for x in ex:
         by.setdefault(x.advisory.canon, []).append(x)

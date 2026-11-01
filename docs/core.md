@@ -118,6 +118,10 @@ Integrity guarantees:
 - `compact()` folds deltas into a new base snapshot so views stay fast. It keeps the log,
   so history and old receipts remain valid. Receipts name the *genesis* fingerprint, so
   compaction never changes an answer's identity.
+- The chain shows edits to history, but it does not stop someone who can rewrite the
+  *whole* log and snapshot from forging a consistent new one. For an external guarantee,
+  publish `Ledger.head` (seq and hash) somewhere you do not control, such as a signed
+  commit, a transparency log or a counterparty, and compare receipts against it.
 - Snapshots load with `allow_pickle=False` and are checked against their fingerprint.
 
 Cost: building a view costs one verified snapshot load, plus a rebuild of only the

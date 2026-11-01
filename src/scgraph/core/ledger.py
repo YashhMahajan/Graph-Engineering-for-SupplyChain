@@ -38,7 +38,7 @@ from typing import Any
 
 import numpy as np
 
-from .graph import OPEN, Relation, TypedGraph, _relation
+from .graph import OPEN, Relation, TypedGraph, _check_name, _relation
 
 GENESIS = "0" * 64
 
@@ -160,6 +160,7 @@ class Ledger:
             raise LedgerError(f"{self.dir} is not a ledger (no base/); use Ledger.create")
         self._log_path = self.dir / "log.jsonl"
         self._deltas: list[Delta] = self._read_log()
+        self._log_size = self._log_path.stat().st_size if self._log_path.exists() else 0
         self._bases = self._scan_bases()
         self._cache: dict[tuple[int, int], TypedGraph] = {}
 
@@ -177,23 +178,42 @@ class Ledger:
         g = TypedGraph(
             base.node_type, base.type_names, base.keys, base.relations, base.sources, meta
         )
-        g.save(d / "base" / "-1")
-        (d / "log.jsonl").touch()
+        for name in g.relations:
+            _check_name(name)
+        tmp = d / f".create-{os.getpid()}"
+        g.save(tmp / "base" / "-1")
+        (tmp / "log.jsonl").touch()
+        (tmp / "base").rename(d / "base")  # publishing base/ is what makes it a ledger
+        (tmp / "log.jsonl").rename(d / "log.jsonl")
+        tmp.rmdir()
         return cls(d)
 
-    def _read_log(self) -> list[Delta]:
+    def _read_log(self, f=None) -> list[Delta]:
+        """Parse the log. Pass an open handle to read through it (needed while holding the
+        write lock: Windows byte-range locks are mandatory for other handles)."""
+        if f is None:
+            if not self._log_path.exists():
+                return []
+            with self._log_path.open() as g:
+                return self._read_log(g)
+        f.seek(0)
         out: list[Delta] = []
-        if not self._log_path.exists():
-            return out
-        with self._log_path.open() as f:
-            for i, line in enumerate(f):
-                if not line.strip():
-                    continue
-                try:
-                    out.append(Delta(**json.loads(line)))
-                except (json.JSONDecodeError, TypeError) as exc:
-                    raise LedgerError(f"log line {i + 1} is corrupt: {exc}") from exc
+        for i, line in enumerate(f.read().splitlines()):
+            if not line.strip():
+                continue
+            try:
+                out.append(Delta(**json.loads(line)))
+            except (json.JSONDecodeError, TypeError) as exc:
+                raise LedgerError(f"log line {i + 1} is corrupt: {exc}") from exc
         return out
+
+    def refresh(self) -> None:
+        """Pick up deltas and snapshots written by other handles or processes."""
+        size = self._log_path.stat().st_size if self._log_path.exists() else 0
+        if size != self._log_size:
+            self._deltas = self._read_log()
+            self._log_size = size
+        self._bases = self._scan_bases()
 
     def _scan_bases(self) -> list[tuple[int, int]]:
         """Sorted ``(base_seq, recorded_at)`` of every snapshot on disk."""
@@ -213,8 +233,10 @@ class Ledger:
         d = self._deltas[-1]
         return d.seq, d.hash
 
-    def verify(self) -> int:
-        """Check the hash chain and clock monotonicity; returns the number of deltas."""
+    def verify(self, snapshots: bool = True) -> int:
+        """Check the hash chain and clock monotonicity, and (``snapshots=True``) re-hash
+        every base snapshot. Returns the number of deltas."""
+        self.refresh()
         prev = GENESIS
         last_t = self._bases[0][1]
         for i, d in enumerate(self._deltas):
@@ -227,8 +249,9 @@ class Ledger:
             if d.recorded_at < last_t:
                 raise LedgerError(f"delta {i}: recorded_at goes backwards")
             prev, last_t = d.hash, d.recorded_at
-        for seq, _ in self._bases:
-            TypedGraph.load(self.dir / "base" / str(seq), verify=True)
+        if snapshots:
+            for seq, _ in self._bases:
+                TypedGraph.load(self.dir / "base" / str(seq), verify=True)
         return len(self._deltas)
 
     # ------------------------------------------------------------------ write
@@ -242,7 +265,7 @@ class Ledger:
             # writer's deltas are chained onto, never forked from
             _lock(f)
             try:
-                self._deltas = self._read_log()
+                self._deltas = self._read_log(f)
                 floor = self._deltas[-1].recorded_at if self._deltas else self._bases[0][1]
                 if t < floor:
                     raise LedgerError(f"recorded_at {t} is earlier than the ledger head ({floor})")
@@ -252,6 +275,7 @@ class Ledger:
                 f.write(canonical(asdict(d)) + "\n")
                 f.flush()
                 os.fsync(f.fileno())
+                self._log_size = f.tell()
             finally:
                 _unlock(f)
         self._deltas.append(d)
@@ -321,6 +345,7 @@ class Ledger:
         Returns ``(graph, last_seq)``. Valid-time filtering is a query parameter
         (``as_of=``) on the returned graph, so one view answers every ``valid_at``.
         """
+        self.refresh()
         kt = to_ts(known_at)
         if kt is None:
             kt = self._deltas[-1].recorded_at if self._deltas else self._bases[-1][1]
@@ -373,8 +398,9 @@ class Ledger:
 
     def check(self, receipt: Receipt, fn: Callable[[TypedGraph, int | None], Any]) -> bool:
         """Recompute an answer from its receipt. True iff the result hash matches and the
-        receipt's log head is part of this ledger's verified chain."""
-        self.verify()
+        receipt's log head is part of this ledger's verified chain. The snapshot the
+        answer is recomputed on is fingerprint-checked when it is loaded."""
+        self.verify(snapshots=False)
         if receipt.log_seq >= len(self._deltas):
             raise LedgerError("receipt refers to deltas this ledger does not have")
         expect = self._deltas[receipt.log_seq].hash if receipt.log_seq >= 0 else GENESIS
@@ -454,9 +480,16 @@ def _apply(base: TypedGraph, deltas: list[Delta]) -> TypedGraph:
             retire.setdefault(rel, []).append((pair, b["valid_to"]))
             pend = rels.get(rel)
             if pend:
+                gone = []
                 for i in range(len(pend["s"])):
                     if (pend["s"][i], pend["d"][i]) == pair and pend["t"][i] == OPEN:
-                        pend["t"][i] = max(b["valid_to"], pend["f"][i] + 1)
+                        if b["valid_to"] <= pend["f"][i]:
+                            gone.append(i)  # retired before it began: never valid
+                        else:
+                            pend["t"][i] = b["valid_to"]
+                if gone:
+                    for k in pend:
+                        pend[k] = [x for i, x in enumerate(pend[k]) if i not in gone]
         elif d.op == "retract_edge":
             retract.setdefault(rel, set()).add(pair)
             pend = rels.get(rel)
@@ -502,9 +535,19 @@ def _apply(base: TypedGraph, deltas: list[Delta]) -> TypedGraph:
             if name in retract:
                 codes = np.array([s * n + t for s, t in retract[name]], np.int64)
                 keep &= ~np.isin(code, codes)
-            for (s, t), when in retire.get(name, []):
-                m = (code == s * n + t) & (vt == OPEN)
-                vt[m] = np.maximum(when, vf[m] + 1)
+            if name in retire:
+                # first retirement of a pair wins (later ones find the edge closed)
+                first: dict[int, int] = {}
+                for (s, t), when in retire[name]:
+                    first.setdefault(s * n + t, when)
+                rc = np.array(sorted(first), np.int64)
+                rw = np.array([first[c] for c in rc.tolist()], np.int64)
+                pos = np.searchsorted(rc, code)
+                pos[pos == len(rc)] = 0
+                hit = (rc[pos] == code) & (vt == OPEN)
+                when = rw[pos]
+                keep &= ~(hit & (when <= vf))  # retired before it began: never valid
+                vt = np.where(hit, when, vt)
             ps.append(src[keep])
             pd_.append(dst[keep])
             pc.append(np.asarray(R.confidence)[keep])

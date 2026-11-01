@@ -148,3 +148,39 @@ def test_interrupted_compaction_is_ignored(led):
 
     shutil.copytree(led.dir / "base" / "-1", led.dir / "base" / ".tmp-9")
     assert Ledger(led.dir).verify() == 1
+
+
+def test_retire_before_valid_from_means_never_valid(led):
+    led.retire_edge("dep", "lib", "log", valid_to="2021-12-01", recorded_at="2021-12-07")
+    g = led.view()[0]
+    assert g.rel("dep").n_edges == 1  # only app->lib remains; no 1-second ghost window
+
+
+def test_retire_base_edge_vectorised(tmp_path):
+    base = TypedGraph.build(
+        [(k, "v") for k in "abc"],
+        {"dep": EdgeBatch([0, 1, 0], [1, 2, 2], valid_from=[0, 100, 0])},
+    )
+    L = Ledger.create(tmp_path / "L", base, recorded_at=0)
+    L.retire_edge("dep", "a", "b", valid_to=50, recorded_at=1)
+    L.retire_edge("dep", "a", "b", valid_to=70, recorded_at=2)  # already closed: no effect
+    L.retire_edge("dep", "b", "c", valid_to=60, recorded_at=3)  # before it began: dropped
+    g = L.view()[0]
+    recs = sorted(
+        (r["src"], r["dst"], r["valid_to"])
+        for r in (g.edge_record("dep", e) for e in range(g.rel("dep").n_edges))
+    )
+    assert recs == [("a", "b", 50), ("a", "c", None)]
+
+
+def test_readers_see_other_writers(led):
+    reader = Ledger(led.dir)
+    led.retract_edge("dep", "lib", "log", reason="x", recorded_at="2022-01-01")
+    assert reader.view()[1] == 1
+
+
+def test_failed_create_leaves_no_ledger(tmp_path):
+    bad = TypedGraph.build([("a", "v")], {"a/b": EdgeBatch([], [])})
+    with pytest.raises(ValueError):
+        Ledger.create(tmp_path / "L", bad, recorded_at=0)
+    Ledger.create(tmp_path / "L", _base(), recorded_at=0)  # retry succeeds

@@ -107,3 +107,11 @@ def test_relation_name_is_path_safe(tmp_path):
     g = TypedGraph.build([("a", "n")], {"../evil": EdgeBatch([], [])})
     with pytest.raises(ValueError, match="relation name"):
         g.save(tmp_path / "g")
+
+
+def test_exact_max_paths_is_not_truncated():
+    g = _g()
+    paths, trunc = find_paths(g, [0], ["x"], lambda v: v == g.node("d"), max_paths=1)
+    assert len(paths) == 1 and not trunc
+    paths, trunc = find_paths(g, [0], ["x"], lambda v: v != 0, max_paths=1)
+    assert len(paths) == 1 and trunc
