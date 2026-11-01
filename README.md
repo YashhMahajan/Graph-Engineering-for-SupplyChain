@@ -227,6 +227,21 @@ The CVE pipeline runs on a domain-agnostic core, [`scgraph.core`](docs/core.md):
 Software is one adapter (`scgraph.adapters.software`); writing another means choosing
 node keys, relations and gates. See [`docs/core.md`](docs/core.md).
 
+## Performance
+
+Measured with `make bench` on 2M versions and 8M edges. Details: [`docs/performance.md`](docs/performance.md).
+
+| Operation | Before | After | Change |
+|---|---|---|---|
+| Load the store | 1.34 s | 0.020 s | **67x faster** |
+| Build the store | 21.7 s | 7.7 s | **2.8x faster** |
+| First key lookup | 1.4 s | < 1 ms | **> 1,000x faster** |
+| Code execution from a downloaded graph | possible (pickle) | not possible | **closed** |
+
+> **How I did it:** I removed every pickled array and kept strings as one UTF-8 block
+> plus offsets, so the store opens with memory maps and no code runs. I then replaced
+> each per-row Python loop on the build and load paths with one NumPy or Arrow operation.
+
 ## Headline results
 
 All reproduced in [`results/run_manifest.json`](results/run_manifest.json) and
@@ -327,7 +342,7 @@ data/                 not committed; scripts regenerate or fetch it (see data/RE
 python scripts/acquire_smoke.py && python scripts/run_pipeline.py --profile smoke
 
 # full, from the published artifacts (skips the 25 GB download)
-python scripts/fetch_artifacts.py --set full
+python scripts/fetch_artifacts.py --set full     # add --allow-unverified until the release pins sha256 hashes
 python scripts/build_graph.py                       # rebuild the 2 GB CSR store, ~2.3 min
 python scripts/run_pipeline.py --profile full
 ```

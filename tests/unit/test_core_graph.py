@@ -119,3 +119,67 @@ def test_exact_max_paths_is_not_truncated():
     assert len(paths) == 1 and not trunc
     paths, trunc = find_paths(g, [0], ["x"], lambda v: v != 0, max_paths=1)
     assert len(paths) == 1 and trunc
+
+
+def test_keys_are_pickle_free_and_fingerprint_stable(tmp_path):
+    g = TypedGraph.build([("ä/1", "n"), ("", "n"), ("b", "m")], {"x": EdgeBatch([0], [2])})
+    fp = g.save(tmp_path / "g")
+    h = TypedGraph.load(tmp_path / "g")
+    assert list(h.keys) == ["ä/1", "", "b"] and h.node("b") == 2
+    assert h.fingerprint() == fp == g.fingerprint()
+    assert h.save(tmp_path / "h") == fp  # re-saving a loaded graph keeps identity
+    for f in (tmp_path / "g").glob("*.npy"):
+        np.load(f, allow_pickle=False)
+
+
+def test_binary_search_lookup_and_order_is_fingerprinted(tmp_path):
+    keys = ["b", "a", "ä", "aa", "", "日本", "Z"]
+    g = TypedGraph.build([(k, "n") for k in keys], {})
+    for i, k in enumerate(keys):
+        assert g.node(k) == i
+    assert g.node("missing") == -1 and g.node("ab") == -1
+    assert list(g.nodes(["Z", "nope", "a"])) == [6, -1, 1]
+    g.save(tmp_path / "g")
+    order = np.load(tmp_path / "g" / "keys.order.npy")
+    np.save(tmp_path / "g" / "keys.order.npy", order[::-1].copy())
+    with pytest.raises(ValueError, match="fingerprint"):
+        TypedGraph.load(tmp_path / "g")
+
+
+def test_from_arrays_validates():
+    with pytest.raises(ValueError, match="unique"):
+        TypedGraph.from_arrays(["a", "a"], np.zeros(2), ["n"], {})
+    with pytest.raises(ValueError, match="type"):
+        TypedGraph.from_arrays(["a"], np.array([3]), ["n"], {})
+
+
+def test_reads_v1_graphs_written_before_the_format_change(tmp_path):
+    import json
+
+    from scgraph.core.graph import _fingerprint_v1
+
+    g = _g()
+    g.save(tmp_path / "g")
+    d = tmp_path / "g"
+    raw = list(g.keys)
+    (d / "keys.json").write_text(json.dumps(raw))
+    for f in ("keys.utf8.npy", "keys.off.npy", "keys.order.npy"):
+        (d / f).unlink()
+    man = json.loads((d / "graph.json").read_text())
+    man["format"] = "scgraph.core.graph/1"
+    man["fingerprint"] = _fingerprint_v1(g, raw)
+    (d / "graph.json").write_text(json.dumps(man))
+    h = TypedGraph.load(d)
+    assert list(h.keys) == raw and h.node("d") == g.node("d")
+    man["fingerprint"] = "0" * 64
+    (d / "graph.json").write_text(json.dumps(man))
+    with pytest.raises(ValueError, match="fingerprint"):
+        TypedGraph.load(d)
+
+
+def test_corrupt_key_order_fails_even_unverified(tmp_path):
+    g = _g()
+    g.save(tmp_path / "g")
+    np.save(tmp_path / "g" / "keys.order.npy", np.zeros(g.n_nodes, np.int64))
+    with pytest.raises(ValueError, match="permutation"):
+        TypedGraph.load(tmp_path / "g", verify=False)

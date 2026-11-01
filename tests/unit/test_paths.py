@@ -40,3 +40,10 @@ def test_blast_radius_lists_reachable_root_versions(tiny_graph: KGStore) -> None
     reached_pkgs = {int(tiny_graph.ver_pkg[v]) for v in blast_radius(tiny_graph, log4j, max_up=5)}
     for name in ("com.example:app", "com.example:web-framework", "com.example:cli-tool"):
         assert tiny_graph.pkg_id("maven", name) in reached_pkgs
+
+
+def test_min_severity_filters_scored_advisories(tiny_graph):
+    from scgraph.paths import exposure_paths
+
+    assert exposure_paths(tiny_graph, 0)  # CVE-2021-44228, CVSS 10.0
+    assert exposure_paths(tiny_graph, 0, min_severity=10.5) == []

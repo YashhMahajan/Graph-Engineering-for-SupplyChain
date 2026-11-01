@@ -17,6 +17,37 @@ This file records all important changes to this project. The format follows
 - **`scgraph.adapters.software`**: the CVE pipeline on the core engine; publication
   dates become edge validity, so as-of audits use the same mechanism as any domain.
 - `docs/core.md`.
+- `scripts/bench/bench_kgstore.py` and `make bench`: build, load and audit latency on a
+  synthetic heavy-tailed graph of any size.
+
+### Changed
+
+All numbers come from `make bench` (2M versions, 8M edges). See `docs/performance.md`.
+
+- **Load time of the store: 1.34 s to 0.020 s (67x faster).** The store does not use
+  pickle now. Strings are a UTF-8 block plus offsets, and both are memory-mapped.
+- **Build time of the store: 21.7 s to 7.7 s (2.8x faster).** One 1-D sort replaces a
+  sort of structured rows. One `bincount` replaces a scatter.
+- **Projection onto the core graph: 29.0 s to 12.5 s (2.3x faster).** Arrow makes the
+  node keys and parses the dates.
+- **First key lookup: 1.4 s to less than 1 ms.** The build step saves the sort order of
+  the keys. A lookup is a binary search.
+- **Security: a graph directory cannot run code at load.** A directory from 1.0 gives an
+  error. To change it once, run `python -m scgraph.kgstore --migrate DIR`.
+- **Security: `fetch_artifacts.py` needs a pinned sha256.** To continue without one, use
+  `--allow-unverified`. Only HTTPS is permitted. A stalled download stops after 120 s.
+- The on-disk format of `scgraph.core.graph` is `/2`. The code can still read `/1`.
+
+> **How I did it:** I removed every pickled array and kept strings as one UTF-8 block
+> plus offsets, so the store opens with memory maps and no code runs. I then replaced
+> each per-row Python loop on the build and load paths with one NumPy or Arrow operation.
+
+### Fixed
+
+- `paths.exposure_paths(min_severity=...)` had no effect. Now it removes advisories with
+  a score below the limit. It keeps advisories with no score, as the ladder does.
+- A corpus with zero packages caused a division by zero in `build`. Now `build` makes an
+  empty store.
 
 ## [1.0.0] - 2026-11-01
 

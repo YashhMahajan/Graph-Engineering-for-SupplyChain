@@ -98,6 +98,14 @@ The full run uses the parsed Parquet tables (approximately 550 MB). You do **not
 the 25 GB Zenodo download. `scripts/fetch_artifacts.py` downloads the parsed tables and
 the embeddings from the GitHub Release.
 
+Every asset is checked against a sha256 pinned in `ARTIFACTS` before it is extracted.
+An asset with no pinned hash is refused unless you pass `--allow-unverified`, so a
+tampered or truncated download can never be unpacked silently. Archives are extracted
+with tarfile's `data` filter, which rejects absolute paths, `..` and device files.
+
+Until a release publishes its hashes and `ARTIFACTS` pins them, the command refuses to
+extract. Use `--allow-unverified` only if you accept that risk.
+
 ```bash
 python scripts/fetch_artifacts.py --set full     # Parquet tables and embeddings
 python scripts/build_graph.py                    # build the CSR store (approximately 2 GB, 2.3 minutes)

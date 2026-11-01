@@ -51,8 +51,9 @@ def exposure_paths(store, root_vid: int, max_depth=12, max_paths=200, min_severi
             continue
         for aid in store.advisories_of(vid):
             aid = int(aid)
-            if store.adv_sev[aid] < min_severity and not store.adv_withdrawn[aid]:
-                pass
+            sev = float(store.adv_sev[aid])
+            if 0.0 < sev < min_severity:
+                continue  # scored below the floor; 0.0 means unscored and is kept
             key = (aid, vid)
             if key in seen_terminal:
                 continue

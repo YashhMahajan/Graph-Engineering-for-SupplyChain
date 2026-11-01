@@ -61,46 +61,100 @@ def _ts_or_min(s) -> int:
     return _MIN if t is None else t
 
 
+def _ts_column(col) -> np.ndarray:
+    """A column of dates / timestamps -> int64 epoch seconds (UTC), ``_MIN`` where missing
+    or unparseable. Vectorised through Arrow for the formats the data sources use:
+
+      ``2021-12-10``                    OSV dates, smoke corpus
+      ``2021-12-10T12:00:00[.fff]Z``    OSV timestamps
+      ``2021-12-10 12:00:00 UTC``       Libraries.io
+
+    Only rows that carry an explicit non-UTC offset (``+05:30``) go through the exact
+    scalar parser, and a scalar failure never discards a date the vector pass found.
+    """
+    import pyarrow as pa
+    import pyarrow.compute as pc
+
+    arr = col.to_arrow() if hasattr(col, "to_arrow") else pa.array(list(col), pa.large_string())
+    arr = pc.utf8_trim_whitespace(arr.cast(pa.large_string()))
+    norm = pc.replace_substring_regex(arr, r"(?i)\s*(utc|z)$", "")
+    norm = pc.replace_substring(norm, "T", " ")
+
+    def parse(width: int, fmt: str) -> np.ndarray:
+        t = pc.strptime(
+            pc.utf8_slice_codeunits(norm, 0, width), format=fmt, unit="s", error_is_null=True
+        )
+        return t.cast(pa.int64()).fill_null(_MIN).to_numpy(zero_copy_only=False)
+
+    full = parse(19, "%Y-%m-%d %H:%M:%S")
+    day = parse(10, "%Y-%m-%d")
+    out = np.where(full != _MIN, full, day).astype(np.int64)
+    tz = pc.match_substring_regex(norm, r"\d[+-]\d\d:?\d\d$").fill_null(False)
+    for i in np.flatnonzero(tz.to_numpy(zero_copy_only=False)).tolist():
+        exact = _ts_or_min(arr[i].as_py())
+        if exact != _MIN:
+            out[i] = exact
+    return out
+
+
 def version_key(store, vid: int) -> str:
     pid = int(store.ver_pkg[vid])
     return f"ver:{store.pkg_eco[pid]}/{store.pkg_name[pid]}@{store.ver_str[vid]}"
 
 
 def from_kgstore(store) -> tuple[TypedGraph, dict[str, Advisory]]:
-    """Project a ``KGStore`` onto the core graph. Returns ``(graph, advisories by key)``."""
+    """Project a ``KGStore`` onto the core graph. Returns ``(graph, advisories by key)``.
+
+    Columnar throughout (Arrow string kernels, numpy gathers): no per-version Python, so
+    it scales to the full 21M-version store.
+    """
+    import pyarrow as pa
+    import pyarrow.compute as pc
+
     N, A = store.N, store.A
-    vkeys = [version_key(store, v) for v in range(N)]
-    akeys = [f"adv:{store.adv_canon[a]}|{store.adv_id[a]}" for a in range(A)]
-    nodes = [(k, "version") for k in vkeys] + [(k, "advisory") for k in akeys]
+
+    def col(c):
+        a = c.to_arrow() if hasattr(c, "to_arrow") else pa.array(list(c), pa.large_string())
+        return a.cast(pa.large_string())
+
+    vp = pa.array(np.asarray(store.ver_pkg, np.int64))
+    eco, name, ver = col(store.pkg_eco).take(vp), col(store.pkg_name).take(vp), col(store.ver_str)
+
+    def lit(x: str):  # scalar of the same string type as the columns
+        return pa.scalar(x, pa.large_string())
+
+    vkeys = pc.binary_join_element_wise(lit("ver:"), eco, lit("/"), name, lit("@"), ver, lit(""))
+    acanon, aid = col(store.adv_canon), col(store.adv_id)
+    akeys = pc.binary_join_element_wise(lit("adv:"), acanon, lit("|"), aid, lit(""))
+    keys = pa.concat_arrays([vkeys.cast(pa.large_string()), akeys.cast(pa.large_string())])
+    type_names = ["advisory", "version"]
+    node_type = np.concatenate([np.full(N, 1, np.int16), np.zeros(A, np.int16)])
 
     src = np.repeat(np.arange(N, dtype=np.int64), np.diff(np.asarray(store.res_indptr)))
     dst = np.asarray(store.res_indices, np.int64)
-    if store.ver_published is not None:
-        vpub = np.array([_ts_or_min(x) for x in store.ver_published], np.int64)
-        rvf = vpub[src]
-    else:
-        rvf = None
+    rvf = _ts_column(store.ver_published)[src] if store.ver_published is not None else None
 
     asrc = np.repeat(np.arange(N, dtype=np.int64), np.diff(np.asarray(store.aff_indptr)))
     aadv = np.asarray(store.aff_ids, np.int64)
-    apub = np.array([_ts_or_min(x) for x in store.adv_published], np.int64)
+    apub = _ts_column(store.adv_published)
 
-    g = TypedGraph.build(
-        nodes,
+    g = TypedGraph.from_arrays(
+        keys,
+        node_type,
+        type_names,
         {
             "resolves_to": EdgeBatch(src, dst, valid_from=rvf, source="resolver"),
             "affects": EdgeBatch(asrc, N + aadv, valid_from=apub[aadv], source="osv"),
         },
         meta={"adapter": "software", "versions": N, "advisories": A},
     )
+    ak = akeys.to_pylist()
+    canon, ids = acanon.to_pylist(), aid.to_pylist()
+    sev = np.asarray(store.adv_sev, np.float64).tolist()
+    wd = np.asarray(store.adv_withdrawn, bool).tolist()
     advs = {
-        akeys[a]: Advisory(
-            akeys[a],
-            str(store.adv_canon[a]),
-            str(store.adv_id[a]),
-            float(store.adv_sev[a]),
-            bool(store.adv_withdrawn[a]),
-            None if apub[a] == _MIN else int(apub[a]),
+        ak[a]: Advisory(
+            ak[a], canon[a], ids[a], sev[a], wd[a], None if apub[a] == _MIN else int(apub[a])
         )
         for a in range(A)
     }
