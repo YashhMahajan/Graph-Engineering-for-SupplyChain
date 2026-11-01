@@ -24,7 +24,7 @@ class StrColumn:
     indexing (returns an object ndarray).
     """
 
-    __slots__ = ("_blob", "_off", "_bv", "_ov", "_n")
+    __slots__ = ("_blob", "_bv", "_n", "_off", "_ov")
 
     def __init__(self, blob: np.ndarray, offsets: np.ndarray):
         if offsets.ndim != 1 or len(offsets) == 0 or int(offsets[0]) != 0:
