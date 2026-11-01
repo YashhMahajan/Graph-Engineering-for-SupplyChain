@@ -1,0 +1,6 @@
+# Default owner for everything in the repo.
+*       @YashhMahajan
+
+# The engine and its tests.
+/src/scgraph/   @YashhMahajan
+/tests/         @YashhMahajan
