@@ -213,6 +213,20 @@ a path-annotated SBOM to a release.
 
 ---
 
+## Use the engine on your own graph
+
+The CVE pipeline runs on a domain-agnostic core, [`scgraph.core`](docs/core.md):
+
+- typed nodes and named relations
+- per-edge confidence, validity window and source
+- path search whose output is evidence
+- a gate ladder that alerts or abstains with a reason
+- a bitemporal, hash-chained ledger that answers "what did we know, and when" and issues
+  verifiable receipts
+
+Software is one adapter (`scgraph.adapters.software`); writing another means choosing
+node keys, relations and gates. See [`docs/core.md`](docs/core.md).
+
 ## Headline results
 
 All reproduced in [`results/run_manifest.json`](results/run_manifest.json) and
