@@ -31,6 +31,7 @@ import json
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Literal
 
 import numpy as np
 
@@ -271,7 +272,7 @@ class TypedGraph:
         man = json.loads((d / "graph.json").read_text())
         if man.get("format") != _FORMAT:
             raise ValueError(f"unsupported graph format {man.get('format')!r}")
-        mode = "r" if mmap else None
+        mode: Literal["r"] | None = "r" if mmap else None
         load = lambda f: np.load(d / f, mmap_mode=mode, allow_pickle=False)  # noqa: E731
         rels = {}
         for name in man["relations"]:

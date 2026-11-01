@@ -545,9 +545,9 @@ def _apply(base: TypedGraph, deltas: list[Delta]) -> TypedGraph:
                 pos = np.searchsorted(rc, code)
                 pos[pos == len(rc)] = 0
                 hit = (rc[pos] == code) & (vt == OPEN)
-                when = rw[pos]
-                keep &= ~(hit & (when <= vf))  # retired before it began: never valid
-                vt = np.where(hit, when, vt)
+                wv = rw[pos]
+                keep &= ~(hit & (wv <= vf))  # retired before it began: never valid
+                vt = np.where(hit, wv, vt)
             ps.append(src[keep])
             pd_.append(dst[keep])
             pc.append(np.asarray(R.confidence)[keep])
