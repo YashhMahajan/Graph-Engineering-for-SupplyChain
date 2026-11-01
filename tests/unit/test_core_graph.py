@@ -1,3 +1,5 @@
+import gc
+
 import numpy as np
 import pytest
 
@@ -76,6 +78,8 @@ def test_save_load_roundtrip_and_tamper_detection(tmp_path):
     h = TypedGraph.load(tmp_path / "g")
     assert h.fingerprint() == fp
     assert h.edge_record("x", 0) == g.edge_record("x", 0)
+    del h  # release the memory maps: Windows cannot overwrite a mapped file
+    gc.collect()
     arr = np.load(tmp_path / "g" / "rel.x.confidence.npy")
     arr[0] = 0.1
     np.save(tmp_path / "g" / "rel.x.confidence.npy", arr)
