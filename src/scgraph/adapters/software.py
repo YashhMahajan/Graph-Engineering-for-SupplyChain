@@ -62,22 +62,38 @@ def _ts_or_min(s) -> int:
 
 
 def _ts_column(col) -> np.ndarray:
-    """A column of ISO dates/timestamps -> int64 epoch seconds, ``_MIN`` where missing
-    or unparseable. Vectorised through Arrow; strings Arrow cannot parse fall back to
-    the scalar parser, so odd formats are handled without slowing the common case."""
+    """A column of dates / timestamps -> int64 epoch seconds (UTC), ``_MIN`` where missing
+    or unparseable. Vectorised through Arrow for the formats the data sources use:
+
+      ``2021-12-10``                    OSV dates, smoke corpus
+      ``2021-12-10T12:00:00[.fff]Z``    OSV timestamps
+      ``2021-12-10 12:00:00 UTC``       Libraries.io
+
+    Only rows that carry an explicit non-UTC offset (``+05:30``) go through the exact
+    scalar parser, and a scalar failure never discards a date the vector pass found.
+    """
     import pyarrow as pa
     import pyarrow.compute as pc
 
     arr = col.to_arrow() if hasattr(col, "to_arrow") else pa.array(list(col), pa.large_string())
     arr = pc.utf8_trim_whitespace(arr.cast(pa.large_string()))
-    s10 = pc.utf8_slice_codeunits(arr, 0, 10)  # YYYY-MM-DD: what the ladder compares
-    ts = pc.strptime(s10, format="%Y-%m-%d", unit="s", error_is_null=True)
-    out = ts.cast(pa.int64()).fill_null(_MIN).to_numpy(zero_copy_only=False).astype(np.int64)
-    # rows with a time component or another format: parse exactly, one by one
-    bad = np.flatnonzero((out == _MIN) & (pc.utf8_length(arr).fill_null(0).to_numpy() > 0))
-    full = np.flatnonzero(pc.utf8_length(arr).fill_null(0).to_numpy() > 10)
-    for i in np.union1d(bad, full).tolist():
-        out[i] = _ts_or_min(arr[i].as_py())
+    norm = pc.replace_substring_regex(arr, r"(?i)\s*(utc|z)$", "")
+    norm = pc.replace_substring(norm, "T", " ")
+
+    def parse(width: int, fmt: str) -> np.ndarray:
+        t = pc.strptime(
+            pc.utf8_slice_codeunits(norm, 0, width), format=fmt, unit="s", error_is_null=True
+        )
+        return t.cast(pa.int64()).fill_null(_MIN).to_numpy(zero_copy_only=False)
+
+    full = parse(19, "%Y-%m-%d %H:%M:%S")
+    day = parse(10, "%Y-%m-%d")
+    out = np.where(full != _MIN, full, day).astype(np.int64)
+    tz = pc.match_substring_regex(norm, r"\d[+-]\d\d:?\d\d$").fill_null(False)
+    for i in np.flatnonzero(tz.to_numpy(zero_copy_only=False)).tolist():
+        exact = _ts_or_min(arr[i].as_py())
+        if exact != _MIN:
+            out[i] = exact
     return out
 
 

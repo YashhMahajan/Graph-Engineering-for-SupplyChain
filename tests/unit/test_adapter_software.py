@@ -65,6 +65,17 @@ def test_undated_advisory_is_not_knowable_as_of():
 def test_timestamp_column_handles_mixed_formats():
     from scgraph.adapters.software import _MIN, _ts_column
 
-    out = _ts_column(["2021-12-10", "2021-12-10T12:00:00Z", "", None, "garbage", "2021-12-10 "])
-    day = 1639094400
-    assert out.tolist() == [day, day + 43200, _MIN, _MIN, _MIN, day]
+    d = 1639094400  # 2021-12-10 UTC
+    vals = [
+        "2021-12-10",
+        "2021-12-10T12:00:00Z",
+        "2021-12-10T12:00:00.123Z",
+        "2021-12-10 12:00:00 UTC",  # Libraries.io
+        "2021-12-10T12:00:00+05:00",
+        "",
+        None,
+        "garbage",
+        " 2021-12-10 ",
+    ]
+    want = [d, d + 43200, d + 43200, d + 43200, d + 43200 - 5 * 3600, _MIN, _MIN, _MIN, d]
+    assert _ts_column(vals).tolist() == want

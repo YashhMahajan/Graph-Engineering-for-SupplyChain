@@ -28,21 +28,28 @@ from pathlib import Path
 import numpy as np
 import pyarrow.parquet as pq
 
+from .core.graph import csr as core_csr
 from .core.strings import StrColumn
 
 
 def _csr(src, dst, n):
-    """Build (indptr, indices) for edges src->dst over n source nodes, sorted by source.
+    """``(indptr, indices)`` for edges src->dst over n source nodes, stably sorted by
+    source. Thin wrapper over the one shared builder in ``scgraph.core.graph``."""
+    indptr, indices, _ = core_csr(src, dst, n, n_dst=np.iinfo(np.int32).max)
+    return indptr, indices
 
-    Stable, so edges keep their input order within a source. ``bincount`` + ``cumsum``
-    builds indptr in one pass (``np.add.at`` is an unbuffered scatter, ~10x slower).
-    """
-    src = np.asarray(src, np.int64)
-    dst = np.asarray(dst, np.int64)
-    order = np.argsort(src, kind="stable")
-    indptr = np.zeros(n + 1, np.int64)
-    np.cumsum(np.bincount(src, minlength=n), out=indptr[1:])
-    return indptr, dst[order].astype(np.int32)
+
+def _pkg_keys(eco, name):
+    """One Arrow string per package, ``ecosystem + NUL + name``: the lookup key."""
+    import pyarrow as pa
+    import pyarrow.compute as pc
+
+    def a(c):
+        x = c.to_arrow() if hasattr(c, "to_arrow") else pa.array(c)
+        return x.cast(pa.large_string())
+
+    sep = pa.scalar("\x00", pa.large_string())
+    return pc.binary_join_element_wise(a(eco), a(name), sep)
 
 
 _STR_COLUMNS = (
@@ -108,10 +115,10 @@ def build(pq_dir: str, graph_dir: str) -> dict:
     pe = ver_pkg[r_src].astype(np.int64)
     pd = ver_pkg[r_dst].astype(np.int64)
     m = pe != pd
-    code = np.sort(pe[m] * P + pd[m])
+    code = np.sort(pe[m] * P + pd[m]) if P else np.zeros(0, np.int64)
     if len(code):
         code = code[np.concatenate(([True], code[1:] != code[:-1]))]
-    ps, pt = code // P, code % P
+    ps, pt = (code // P, code % P) if P else (code, code)
     pi = np.zeros(P + 1, np.int64)  # codes are sorted by source: no argsort needed
     np.cumsum(np.bincount(ps, minlength=P), out=pi[1:])
     px = pt.astype(np.int32)
@@ -126,6 +133,11 @@ def build(pq_dir: str, graph_dir: str) -> dict:
         StrColumn.save(G / "ver_published", vers.column("published"))
     StrColumn.save(G / "pkg_eco", pkgs.column("ecosystem"))
     StrColumn.save(G / "pkg_name", pkgs.column("name"))
+    keys = StrColumn(
+        *StrColumn.encode_arrow(_pkg_keys(pkgs.column("ecosystem"), pkgs.column("name")))
+    )
+    StrColumn.save(G / "pkg_key", keys)
+    np.save(G / "pkg_key.order.npy", keys.sort_order())
 
     osv_ids = advs.column("osv_id").to_pylist()
     canon = meta["canon"]
@@ -165,6 +177,15 @@ def migrate_legacy(graph_dir: str) -> list[str]:
             StrColumn.save(G / name, np.load(old, allow_pickle=True).tolist())
             old.unlink()
             done.append(name)
+    if not StrColumn.exists(G / "pkg_key"):
+        keys = StrColumn(
+            *StrColumn.encode_arrow(
+                _pkg_keys(StrColumn.load(G / "pkg_eco"), StrColumn.load(G / "pkg_name"))
+            )
+        )
+        StrColumn.save(G / "pkg_key", keys)
+        np.save(G / "pkg_key.order.npy", keys.sort_order())
+        done.append("pkg_key")
     if not (G / "pkgver_indptr.npy").exists():
         ver_pkg = np.load(G / "ver_pkg.npy")
         P = len(StrColumn.load(G / "pkg_name"))
@@ -216,6 +237,11 @@ class KGStore:
         for i, c in enumerate(self.adv_canon):
             self.canon_to_idx.setdefault(c, i)
         self._pkg_index: dict[tuple[str, str], int] | None = None
+        if StrColumn.exists(G / "pkg_key"):
+            self._pkg_key: StrColumn | None = LS("pkg_key")
+            self._pkg_order: np.ndarray | None = L("pkg_key.order")
+        else:
+            self._pkg_key = self._pkg_order = None
         self.load_secs = time.time() - t0
 
     @property
@@ -246,7 +272,12 @@ class KGStore:
 
     # --- lookup ---
     def pkg_id(self, ecosystem, name):
-        return self.pkg_index.get((ecosystem, name), -1)
+        """(ecosystem, name) -> pkg_id or -1. A binary search over the persisted sort
+        order: O(log P) string decodes, nothing built on first call."""
+        if self._pkg_key is None:  # store built before the key index existed
+            return self.pkg_index.get((ecosystem, name), -1)
+        assert self._pkg_order is not None
+        return self._pkg_key.find(f"{ecosystem}\x00{name}", self._pkg_order)
 
     def versions_of(self, pid) -> list[int]:
         pid = int(pid)

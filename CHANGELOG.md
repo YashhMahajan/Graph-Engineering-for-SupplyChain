@@ -22,24 +22,32 @@ This file records all important changes to this project. The format follows
 
 ### Changed
 
-- **Graph store no longer uses pickle.** String columns are a UTF-8 blob plus int64
-  offsets, memory-mapped (`scgraph.core.strings.StrColumn`). Loading a graph directory
-  can no longer execute code. Directories from 1.0 are refused with a clear error;
-  convert them with `python -m scgraph.kgstore --migrate DIR`.
-- **Faster.** Measured with `make bench` on 2M versions / 8M edges, same machine:
-  `KGStore()` load 1.27 s -> 0.06 s (21x); `build` 22.1 s -> 6.8 s (3.3x);
-  `adapters.software.from_kgstore` 29.0 s -> 12.5 s; first core key lookup 1.4 s -> 0 on a
-  loaded graph (persisted sort order + binary search). Ledger views at 1M nodes / 5M edges:
-  first verified snapshot load 1.2 s -> 0.6 s.
-- `scripts/fetch_artifacts.py` refuses to extract assets without a pinned sha256 unless
-  `--allow-unverified` is passed, refuses non-HTTPS URLs and times out stalled downloads.
-- `scgraph.core.graph` on-disk format is now `/2` (keys as a string column plus a
-  fingerprinted lookup index).
+All numbers come from `make bench` (2M versions, 8M edges). See `docs/performance.md`.
+
+- **Load time of the store: 1.34 s to 0.020 s (67x faster).** The store does not use
+  pickle now. Strings are a UTF-8 block plus offsets, and both are memory-mapped.
+- **Build time of the store: 21.7 s to 7.7 s (2.8x faster).** One 1-D sort replaces a
+  sort of structured rows. One `bincount` replaces a scatter.
+- **Projection onto the core graph: 29.0 s to 12.5 s (2.3x faster).** Arrow makes the
+  node keys and parses the dates.
+- **First key lookup: 1.4 s to less than 1 ms.** The build step saves the sort order of
+  the keys. A lookup is a binary search.
+- **Security: a graph directory cannot run code at load.** A directory from 1.0 gives an
+  error. To change it once, run `python -m scgraph.kgstore --migrate DIR`.
+- **Security: `fetch_artifacts.py` needs a pinned sha256.** To continue without one, use
+  `--allow-unverified`. Only HTTPS is permitted. A stalled download stops after 120 s.
+- The on-disk format of `scgraph.core.graph` is `/2`. The code can still read `/1`.
+
+> **How I did it:** I removed every pickled array and kept strings as one UTF-8 block
+> plus offsets, so the store opens with memory maps and no code runs. I then replaced
+> each per-row Python loop on the build and load paths with one NumPy or Arrow operation.
 
 ### Fixed
 
-- `paths.exposure_paths(min_severity=...)` was ignored; it now drops advisories scored
-  below the floor (unscored advisories are kept, as the ladder does).
+- `paths.exposure_paths(min_severity=...)` had no effect. Now it removes advisories with
+  a score below the limit. It keeps advisories with no score, as the ladder does.
+- A corpus with zero packages caused a division by zero in `build`. Now `build` makes an
+  empty store.
 
 ## [1.0.0] - 2026-11-01
 

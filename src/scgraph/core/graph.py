@@ -39,9 +39,12 @@ from .strings import StrColumn
 
 OPEN = np.iinfo(np.int64).max  # valid_to of an edge that has not been retired
 _FORMAT = "scgraph.core.graph/2"
+_FORMAT_V1 = "scgraph.core.graph/1"  # read-only: keys.json, no persisted key order
 
 
-def csr(src: np.ndarray, dst: np.ndarray, n: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+def csr(
+    src: np.ndarray, dst: np.ndarray, n: int, n_dst: int | None = None
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Sort edges by source and return ``(indptr, indices, order)``.
 
     ``order`` maps CSR position -> original edge position, so edge attributes can be
@@ -51,8 +54,11 @@ def csr(src: np.ndarray, dst: np.ndarray, n: int) -> tuple[np.ndarray, np.ndarra
     dst = np.asarray(dst, np.int64)
     if src.shape != dst.shape:
         raise ValueError("src and dst must have the same length")
-    if len(src) and (src.min() < 0 or dst.min() < 0 or src.max() >= n or dst.max() >= n):
-        raise ValueError(f"edge endpoint out of range [0, {n})")
+    nd = n if n_dst is None else n_dst
+    if len(src) and (src.min() < 0 or src.max() >= n):
+        raise ValueError(f"edge source out of range [0, {n})")
+    if len(dst) and (dst.min() < 0 or dst.max() >= nd):
+        raise ValueError(f"edge endpoint out of range [0, {nd})")
     order = np.argsort(src, kind="stable")
     indptr = np.zeros(n + 1, np.int64)
     np.cumsum(np.bincount(src, minlength=n), out=indptr[1:])
@@ -337,17 +343,32 @@ class TypedGraph:
         """Open a saved graph. Arrays are memory-mapped; no pickle is ever loaded."""
         d = Path(path)
         man = json.loads((d / "graph.json").read_text())
-        if man.get("format") != _FORMAT:
-            raise ValueError(f"unsupported graph format {man.get('format')!r}")
+        fmt = man.get("format")
+        if fmt not in (_FORMAT, _FORMAT_V1):
+            raise ValueError(f"unsupported graph format {fmt!r}")
         mode: Literal["r"] | None = "r" if mmap else None
         load = lambda f: np.load(d / f, mmap_mode=mode, allow_pickle=False)  # noqa: E731
         rels = {}
         for name in man["relations"]:
             _check_name(name)
             rels[name] = Relation(name, *(load(f"rel.{name}.{f}.npy") for f in _REL_FIELDS))
+        node_type = load("node_type.npy")
+        if fmt == _FORMAT_V1:  # keys.json, no persisted order: verify with the v1 hash
+            raw = json.loads((d / "keys.json").read_text())
+            keys = StrColumn(*StrColumn.encode(raw))
+            g = cls(node_type, man["type_names"], keys, rels, man["sources"], man["meta"])
+            if verify and _fingerprint_v1(g, raw) != man["fingerprint"]:
+                raise ValueError(f"fingerprint mismatch for {d}: the graph on disk was modified")
+            return g
         keys = StrColumn.load(d / "keys")
         order = load("keys.order.npy")
-        g = cls(load("node_type.npy"), man["type_names"], keys, rels, man["sources"], man["meta"])
+        # cheap structural check even without verify: a corrupt index must fail loudly,
+        # not turn lookups into silent misses
+        if len(order) != len(keys) or (
+            len(order) and not (np.bincount(order, minlength=len(keys)) == 1).all()
+        ):
+            raise ValueError(f"{d}: keys.order.npy is not a permutation of the node ids")
+        g = cls(node_type, man["type_names"], keys, rels, man["sources"], man["meta"])
         g._key_order = order
         if verify and g.fingerprint() != man["fingerprint"]:
             raise ValueError(f"fingerprint mismatch for {d}: the graph on disk was modified")
@@ -365,6 +386,20 @@ _REL_FIELDS = (
     "valid_to",
     "source",
 )
+
+
+def _fingerprint_v1(g: TypedGraph, raw_keys: list[str]) -> str:
+    """The /1 fingerprint, kept only to verify graphs and ledgers written by it."""
+    h = hashlib.sha256(_FORMAT_V1.encode())
+    h.update(json.dumps([g.type_names, g.sources], sort_keys=True).encode())
+    _hash_arr(h, np.asarray(g.node_type))
+    h.update("\x1f".join(map(str, raw_keys)).encode())
+    for name in sorted(g.relations):
+        r = g.relations[name]
+        h.update(name.encode())
+        for a in (r.indptr, r.indices, r.confidence, r.valid_from, r.valid_to, r.source):
+            _hash_arr(h, a)
+    return h.hexdigest()
 
 
 def _relation(name, src, dst, n, conf, vf, vt, sid) -> Relation:

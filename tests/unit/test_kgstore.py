@@ -100,3 +100,22 @@ def test_legacy_pickled_store_is_refused_then_migrated(tiny_corpus, tmp_path):
     s = KGStore(str(g))
     assert s.pkg_name[2] == "org.apache.logging.log4j:log4j-core"
     assert s.versions_of(2) == [3, 4]
+
+
+def test_pkg_id_binary_search_matches_names(tiny_graph: KGStore) -> None:
+    for pid, (e, n) in enumerate(zip(tiny_graph.pkg_eco, tiny_graph.pkg_name)):
+        assert tiny_graph.pkg_id(e, n) == pid
+    assert tiny_graph.pkg_id("npm", "nope") == -1
+    assert tiny_graph.pkg_id("maven", "lib-safe") == -1  # right name, wrong ecosystem
+
+
+def test_build_with_no_packages(tmp_path, tiny_corpus) -> None:
+    import pyarrow.parquet as pq
+
+    pqd = tmp_path / "pq"
+    shutil.copytree(tiny_corpus, pqd)
+    for t in ("packages", "versions", "resolved", "affected_versions"):
+        tab = pq.read_table(pqd / f"{t}.parquet")
+        pq.write_table(tab.slice(0, 0), pqd / f"{t}.parquet")
+    stats = build_graph(str(pqd), str(tmp_path / "g"))
+    assert stats["versions"] == 0 and stats["resolves_edges"] == 0

@@ -103,6 +103,9 @@ An asset with no pinned hash is refused unless you pass `--allow-unverified`, so
 tampered or truncated download can never be unpacked silently. Archives are extracted
 with tarfile's `data` filter, which rejects absolute paths, `..` and device files.
 
+Until a release publishes its hashes and `ARTIFACTS` pins them, the command refuses to
+extract. Use `--allow-unverified` only if you accept that risk.
+
 ```bash
 python scripts/fetch_artifacts.py --set full     # Parquet tables and embeddings
 python scripts/build_graph.py                    # build the CSR store (approximately 2 GB, 2.3 minutes)

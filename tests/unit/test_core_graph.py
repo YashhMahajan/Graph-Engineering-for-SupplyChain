@@ -151,3 +151,35 @@ def test_from_arrays_validates():
         TypedGraph.from_arrays(["a", "a"], np.zeros(2), ["n"], {})
     with pytest.raises(ValueError, match="type"):
         TypedGraph.from_arrays(["a"], np.array([3]), ["n"], {})
+
+
+def test_reads_v1_graphs_written_before_the_format_change(tmp_path):
+    import json
+
+    from scgraph.core.graph import _fingerprint_v1
+
+    g = _g()
+    g.save(tmp_path / "g")
+    d = tmp_path / "g"
+    raw = list(g.keys)
+    (d / "keys.json").write_text(json.dumps(raw))
+    for f in ("keys.utf8.npy", "keys.off.npy", "keys.order.npy"):
+        (d / f).unlink()
+    man = json.loads((d / "graph.json").read_text())
+    man["format"] = "scgraph.core.graph/1"
+    man["fingerprint"] = _fingerprint_v1(g, raw)
+    (d / "graph.json").write_text(json.dumps(man))
+    h = TypedGraph.load(d)
+    assert list(h.keys) == raw and h.node("d") == g.node("d")
+    man["fingerprint"] = "0" * 64
+    (d / "graph.json").write_text(json.dumps(man))
+    with pytest.raises(ValueError, match="fingerprint"):
+        TypedGraph.load(d)
+
+
+def test_corrupt_key_order_fails_even_unverified(tmp_path):
+    g = _g()
+    g.save(tmp_path / "g")
+    np.save(tmp_path / "g" / "keys.order.npy", np.zeros(g.n_nodes, np.int64))
+    with pytest.raises(ValueError, match="permutation"):
+        TypedGraph.load(tmp_path / "g", verify=False)

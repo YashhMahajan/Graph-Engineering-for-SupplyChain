@@ -24,7 +24,7 @@ class StrColumn:
     indexing (returns an object ndarray).
     """
 
-    __slots__ = ("_blob", "_off")
+    __slots__ = ("_blob", "_off", "_bv", "_ov", "_n")
 
     def __init__(self, blob: np.ndarray, offsets: np.ndarray):
         if offsets.ndim != 1 or len(offsets) == 0 or int(offsets[0]) != 0:
@@ -32,6 +32,11 @@ class StrColumn:
         if int(offsets[-1]) != len(blob):
             raise ValueError("offsets do not match the blob length")
         self._blob, self._off = blob, offsets
+        # memoryviews: indexing one yields a plain Python int / bytes slice, ~5x faster
+        # per element than indexing a (memory-mapped) numpy array
+        self._ov = memoryview(np.ascontiguousarray(offsets, np.int64))
+        self._bv = memoryview(np.ascontiguousarray(blob, np.uint8))
+        self._n = len(offsets) - 1
 
     @staticmethod
     def encode(values) -> tuple[np.ndarray, np.ndarray]:
@@ -85,19 +90,21 @@ class StrColumn:
         return base.with_name(base.name + ".off.npy").exists()
 
     def __len__(self) -> int:
-        return len(self._off) - 1
+        return self._n
 
     def _one(self, i: int) -> str:
-        n = len(self)
+        n = self._n
         if i < 0:
             i += n
         if not 0 <= i < n:
             raise IndexError(f"index {i} out of range for column of length {n}")
-        a, b = int(self._off[i]), int(self._off[i + 1])
-        return bytes(self._blob[a:b]).decode("utf-8")
+        o = self._ov
+        return str(self._bv[o[i] : o[i + 1]], "utf-8")
 
     def __getitem__(self, key):
-        if isinstance(key, int | np.integer):
+        if type(key) is int:  # hot path: skip the isinstance chain
+            return self._one(key)
+        if isinstance(key, np.integer):
             return self._one(int(key))
         idx = np.atleast_1d(np.arange(len(self))[key])
         if len(idx) > 64:
