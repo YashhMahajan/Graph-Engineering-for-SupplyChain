@@ -11,8 +11,8 @@ type: software
 authors:
   - family-names: Mahajan
     given-names: Yashh
-version: 1.0.0
-date-released: 2026-11-01
+version: 1.1.0
+date-released: 2026-11-02
 license: Apache-2.0
 repository-code: "https://github.com/YashhMahajan/Graph-Engineering-for-SupplyChain"
 keywords:

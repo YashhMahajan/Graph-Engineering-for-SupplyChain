@@ -46,6 +46,9 @@ smoke: ## Acquire the smoke corpus and run the pipeline end to end
 graph: ## Rebuild the CSR graph store from data/parquet
 	$(BIN)/python scripts/build_graph.py
 
+demo: ## Print one abstention and one exposure path (10 seconds, no data needed)
+	$(BIN)/python scripts/demo.py
+
 bench: ## Benchmark build, load and audit latency on a synthetic 2M-version graph
 	$(BIN)/python scripts/bench/bench_kgstore.py --versions 2000000 --audits 1000
 

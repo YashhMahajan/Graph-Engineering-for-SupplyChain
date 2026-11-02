@@ -12,11 +12,33 @@ calls are used to build the graph.
 [![notebook](https://github.com/YashhMahajan/Graph-Engineering-for-SupplyChain/actions/workflows/notebook-smoke.yml/badge.svg)](https://github.com/YashhMahajan/Graph-Engineering-for-SupplyChain/actions/workflows/notebook-smoke.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/YashhMahajan/Graph-Engineering-for-SupplyChain/badge)](https://scorecard.dev/viewer/?uri=github.com/YashhMahajan/Graph-Engineering-for-SupplyChain)
 [![Built on 82.8M edges](https://img.shields.io/badge/validated-82.8M%20edges-success.svg)](results/run_manifest.json)
 
 </div>
 
 ---
+
+## At a glance
+
+**82.8M edges, 8 ecosystems, zero LLM calls to build the graph.** Every alert carries its dependency path as proof; everything else is an explicit, reasoned abstention.
+
+Measured with `make bench` on 2M versions and 8M edges. Details: [`docs/performance.md`](docs/performance.md).
+
+| Operation | Before | After | Change |
+|---|---|---|---|
+| Load the store | 1.34 s | 0.020 s | **67x faster** |
+| Build the store | 21.7 s | 7.7 s | **2.8x faster** |
+| First key lookup | 1.4 s | < 1 ms | **> 1,000x faster** |
+| Code execution from a downloaded graph | possible (pickle) | not possible | **closed** |
+
+> **How I did it:** I removed every pickled array and kept strings as one UTF-8 block
+> plus offsets, so the store opens with memory maps and no code runs. I then replaced
+> each per-row Python loop on the build and load paths with one NumPy or Arrow operation.
+
+---
+
+Try it in ten seconds: `pip install -e . && python scripts/demo.py`. It prints one abstention and one exposure path with full provenance.
 
 ## The problem, in one scene
 
@@ -227,21 +249,6 @@ The CVE pipeline runs on a domain-agnostic core, [`scgraph.core`](docs/core.md):
 Software is one adapter (`scgraph.adapters.software`); writing another means choosing
 node keys, relations and gates. See [`docs/core.md`](docs/core.md).
 
-## Performance
-
-Measured with `make bench` on 2M versions and 8M edges. Details: [`docs/performance.md`](docs/performance.md).
-
-| Operation | Before | After | Change |
-|---|---|---|---|
-| Load the store | 1.34 s | 0.020 s | **67x faster** |
-| Build the store | 21.7 s | 7.7 s | **2.8x faster** |
-| First key lookup | 1.4 s | < 1 ms | **> 1,000x faster** |
-| Code execution from a downloaded graph | possible (pickle) | not possible | **closed** |
-
-> **How I did it:** I removed every pickled array and kept strings as one UTF-8 block
-> plus offsets, so the store opens with memory maps and no code runs. I then replaced
-> each per-row Python loop on the build and load paths with one NumPy or Arrow operation.
-
 ## Headline results
 
 All reproduced in [`results/run_manifest.json`](results/run_manifest.json) and
@@ -289,7 +296,7 @@ flowchart LR
     C -.->|optional, GPU| M["model layer<br/>embeddings · reachability · GraphSAGE · judge"]
 ```
 
-The engine is 25 modules in [`src/scgraph/`](src/scgraph/), in seven layers:
+The engine is 31 modules in [`src/scgraph/`](src/scgraph/): seven domain layers on top of a domain-agnostic core.
 
 | layer | modules | what it produces |
 |---|---|---|
@@ -300,6 +307,7 @@ The engine is 25 modules in [`src/scgraph/`](src/scgraph/), in seven layers:
 | Remediation | `remediate`, `report`, `whatif` | the minimal patch set, the cited report, the SBOM, remediation as a graph edit |
 | Model layer (optional, GPU) | `embed`, `reach`, `gnn`, `judge` | semantic relevance, a reachability prior, node classification, a severity check |
 | System | `agents`, `runstate` | a capability graph, a coordinated run, a versioned run graph, dependency-graph bisect |
+| Core (any domain) | `core.graph`, `core.paths`, `core.gates`, `core.ledger`, `core.strings`, `adapters.software` | typed temporal graph with provenance, evidence paths, alert-or-abstain gates, bitemporal hash-chained ledger with receipts, pickle-free string columns |
 
 The seven-gate alert ladder, in order: **(1)** the question grounded to a package in the
 graph, **(2)** a resolved dependency path reaches it, **(3)** a terminal version sits in
@@ -317,7 +325,7 @@ Full detail in [`docs/architecture.md`](docs/architecture.md) and
 ## Repository layout
 
 ```
-src/scgraph/          the engine: 25 modules across the seven layers above
+src/scgraph/          the engine: 31 modules (seven layers + core/ and adapters/)
 notebooks/            the notebook, committed with its full-run outputs and 14 figures
 scripts/              argparse CLIs: acquire, build graph, run pipeline, run evaluation, fetch artifacts, extra figures
 tests/                93 tests: unit tests plus a smoke-pipeline integration test
