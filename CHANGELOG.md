@@ -4,7 +4,7 @@ This file records all important changes to this project. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.1.0] - 2026-11-02
 
 ### Added
 
@@ -90,4 +90,5 @@ resolved edges, 285,698 advisories).
 - The model layer needs a CUDA GPU. The full Parquet corpus and the embeddings are not in
   git. They are GitHub Release assets.
 
+[1.1.0]: https://github.com/YashhMahajan/Graph-Engineering-for-SupplyChain/releases/tag/v1.1.0
 [1.0.0]: https://github.com/YashhMahajan/Graph-Engineering-for-SupplyChain/releases/tag/v1.0.0
