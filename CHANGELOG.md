@@ -17,6 +17,10 @@ This file records all important changes to this project. The format follows
 - **`scgraph.adapters.software`**: the CVE pipeline on the core engine; publication
   dates become edge validity, so as-of audits use the same mechanism as any domain.
 - `docs/core.md`.
+- `scripts/demo.py` and `make demo`: one abstention and one exposure path, no data needed.
+- OpenSSF Scorecard workflow and README badge.
+- Release workflow: a `vX.Y.Z` tag tests, builds and publishes a GitHub Release with
+  `SHA256SUMS`.
 - `scripts/bench/bench_kgstore.py` and `make bench`: build, load and audit latency on a
   synthetic heavy-tailed graph of any size.
 

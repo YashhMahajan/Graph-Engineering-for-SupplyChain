@@ -12,6 +12,7 @@ calls are used to build the graph.
 [![notebook](https://github.com/YashhMahajan/Graph-Engineering-for-SupplyChain/actions/workflows/notebook-smoke.yml/badge.svg)](https://github.com/YashhMahajan/Graph-Engineering-for-SupplyChain/actions/workflows/notebook-smoke.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/YashhMahajan/Graph-Engineering-for-SupplyChain/badge)](https://scorecard.dev/viewer/?uri=github.com/YashhMahajan/Graph-Engineering-for-SupplyChain)
 [![Built on 82.8M edges](https://img.shields.io/badge/validated-82.8M%20edges-success.svg)](results/run_manifest.json)
 
 </div>
@@ -36,6 +37,8 @@ Measured with `make bench` on 2M versions and 8M edges. Details: [`docs/performa
 > each per-row Python loop on the build and load paths with one NumPy or Arrow operation.
 
 ---
+
+Try it in ten seconds: `pip install -e . && python scripts/demo.py`. It prints one abstention and one exposure path with full provenance.
 
 ## The problem, in one scene
 
