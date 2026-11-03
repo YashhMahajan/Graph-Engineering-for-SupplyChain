@@ -1,7 +1,5 @@
 name: scgraph scan
-description: >-
-  Scan lockfiles for vulnerable and malicious dependencies. Each alert shows the
-  dependency path that proves it and the smallest safe fix.
+description: Find vulnerable and malicious dependencies in lockfiles. Each alert shows its dependency path and a safe fix.
 author: Yashh Mahajan
 branding:
   icon: shield

@@ -4,6 +4,17 @@ This file records all important changes to this project. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1] - 2026-11-03
+
+### Fixed
+
+- `action.yml`: the description is now shorter than 125 characters, so the Action can
+  go on the GitHub Marketplace.
+- The Scorecard workflow uses `ossf/scorecard-action@v2.4.3`. Version 2.4.0 pulls its
+  image from `gcr.io`, which now refuses the download.
+- The release workflow attaches the wheel, the sdist and `SHA256SUMS` to a release that
+  already exists (for example one made in the web UI), and does not fail.
+
 ## [1.2.0] - 2026-11-03
 
 ### Added

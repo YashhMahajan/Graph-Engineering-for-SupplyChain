@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "scgraph"
-version = "1.2.0"
+version = "1.2.1"
 description = "Graph engineering for software supply-chain impact analysis: CVE exposure with provenance over the open-source dependency graph. Zero LLM calls build the graph."
 readme = "README.md"
 requires-python = ">=3.11"
