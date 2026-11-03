@@ -4,6 +4,42 @@ This file records all important changes to this project. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-11-03
+
+### Added
+
+- **`scgraph scan`**: scan real lockfiles. Ten formats: `package-lock.json` (v1 to v3),
+  `yarn.lock` (classic and Berry), `poetry.lock`, `uv.lock`, `requirements*.txt`,
+  `Pipfile.lock`, `Cargo.lock`, `Gemfile.lock`, `composer.lock` and `go.mod`.
+  - The lockfile becomes a `scgraph.core.TypedGraph`. Exposure search is `find_paths`.
+    The verdict is a `Ladder` with five gates: withdrawn, path, scope, severity, ignored.
+  - Each alert shows the shortest dependency path. A production path has priority
+    over a dev path.
+  - OSV records for one issue (GHSA, PYSEC, CVE) merge into one finding.
+  - Malicious packages (OSV `MAL-`) are P0 and alert in dev dependencies too.
+  - CISA KEV and FIRST EPSS set the priority (P0 to P4).
+  - Fix plan: the smallest safe version per package. For npm, the smallest
+    direct-dependency bump that removes the vulnerable child.
+  - Output: text, JSON, SARIF 2.1.0 and Markdown. `--fail-on` sets the exit code.
+  - Incident mode (`--advisory ID`) and a portfolio view for many lockfiles.
+  - `.scgraph-ignore` entries with an expiry date (`until=YYYY-MM-DD`).
+  - Offline mode (`--offline DIR`, `scgraph fetch-osv`, `SCGRAPH_OSV_DIR`) with an index
+    per dump. A warm offline scan of a 90-package lockfile takes about 2 s.
+- **`scgraph check`**: a pre-install guard. It blocks names that are not in the
+  registry, malicious releases and missing versions. It warns about fresh releases
+  (48 h cooldown), new packages, typosquats, install scripts, sdist-only versions,
+  deprecated or yanked versions and known vulnerabilities. A failed lookup is
+  `unverified`, never `allow`.
+- **`scgraph hook claude-code`**: a `PreToolUse` hook that checks the packages in each
+  shell command before an agent runs it.
+- **`scgraph mcp`**: a Model Context Protocol server with no extra dependencies. Tools:
+  `check_package`, `scan_lockfile`, `explain_advisory`.
+- `action.yml` (GitHub Action with SARIF upload) and `.pre-commit-hooks.yaml`.
+- `examples/` with three sample lockfiles, one of them a reconstruction of the
+  September 2025 npm compromise.
+- `scripts/make_scan_figures.py`, three figures and `results/metrics/scan_examples.json`.
+- `docs/scan.md` and `docs/responsible-use.md`.
+
 ## [1.1.0] - 2026-11-02
 
 ### Added

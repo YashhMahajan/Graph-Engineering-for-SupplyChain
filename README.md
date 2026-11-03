@@ -21,7 +21,7 @@ calls are used to build the graph.
 
 ## At a glance
 
-**82.8M edges, 8 ecosystems, zero LLM calls to build the graph.** Every alert carries its dependency path as proof; everything else is an explicit, reasoned abstention.
+**82.8M edges, 8 ecosystems, zero LLM calls to build the graph.** Every alert carries its dependency path as proof; everything else is an explicit, reasoned abstention. **New in 1.2:** `scgraph scan` brings the same engine to your lockfiles, and `scgraph check` guards installs by people and AI agents.
 
 Measured with `make bench` on 2M versions and 8M edges. Details: [`docs/performance.md`](docs/performance.md).
 
@@ -38,7 +38,60 @@ Measured with `make bench` on 2M versions and 8M edges. Details: [`docs/performa
 
 ---
 
-Try it in ten seconds: `pip install -e . && python scripts/demo.py`. It prints one abstention and one exposure path with full provenance.
+## Scan your project now
+
+The same engine now runs on your lockfiles. Each alert shows the dependency path that
+proves it and the smallest safe fix. Each other finding shows why it is not an alert.
+
+```bash
+pip install git+https://github.com/YashhMahajan/Graph-Engineering-for-SupplyChain
+scgraph scan .                       # or: scgraph scan examples/
+```
+
+<div align="center"><img src="results/figures/scan_terminal.png" alt="scgraph scan output on the September 2025 npm compromise" width="820"></div>
+
+Above: a reconstruction of the 8 September 2025 npm compromise. `debug@4.4.2` is
+malicious and three hops deep. A flat list shows the name. scgraph shows the path.
+
+| what you get | how |
+|---|---|
+| **Proof for each alert** | the shortest path from your project to the package, from the lockfile edges |
+| **Malicious packages first** | OSV `MAL-` records are P0. They alert even in dev dependencies, because install scripts run there. |
+| **Less noise** | GHSA, PYSEC and CVE ids for one issue merge. Dev-only and withdrawn findings abstain with a reason. |
+| **Real priority** | CISA KEV (actively exploited) and FIRST EPSS rank the alerts |
+| **Fixes you can apply** | the smallest safe version. For npm, the one direct-dependency bump that removes the vulnerable child. |
+| **Incident mode** | `scgraph scan ~/src --advisory CVE-X` shows every lockfile that the advisory reaches |
+| **10 lockfile formats** | npm, yarn, poetry, uv, requirements, Pipfile, Cargo, Gemfile, composer, go.mod |
+| **CI and code scanning** | SARIF, Markdown summary, a GitHub Action and a pre-commit hook |
+
+<div align="center"><img src="results/figures/scan_noise.png" alt="From advisory records to fix actions" width="900"></div>
+
+On the sample Express app, 61 advisory records become 48 alerts and **4 fix actions**.
+One `express` bump clears 11 advisories in 6 transitive packages. Numbers:
+[`results/metrics/scan_examples.json`](results/metrics/scan_examples.json).
+
+### Stop bad packages before they install
+
+About one in five package names that code assistants suggest do not exist. Attackers
+register these names ("slopsquatting"). Recent worms spread through new releases of
+real packages. `scgraph check` asks the registry and OSV before the install happens.
+
+<div align="center"><img src="results/figures/guard_terminal.png" alt="scgraph check output" width="900"></div>
+
+For AI coding agents, the same check runs as a Claude Code hook and as an MCP server:
+
+```bash
+claude mcp add scgraph -- scgraph mcp      # tools: check_package, scan_lockfile, explain_advisory
+```
+
+The hook denies `npm install`, `pip install`, `npx`, `uvx` and the like when a package
+is blocked, and asks you when it gets a warning. If a lookup fails, the result is
+`unverified`, never `allow`. Setup, the GitHub Action and pre-commit:
+[`docs/scan.md`](docs/scan.md). Rules for fair use: [`docs/responsible-use.md`](docs/responsible-use.md).
+
+---
+
+Try the research engine in ten seconds: `pip install -e . && python scripts/demo.py`. It prints one abstention and one exposure path with full provenance.
 
 ## The problem, in one scene
 
@@ -326,9 +379,11 @@ Full detail in [`docs/architecture.md`](docs/architecture.md) and
 
 ```
 src/scgraph/          the engine: 31 modules (seven layers + core/ and adapters/)
+src/scgraph/scan/     the scgraph command: lockfiles, OSV/KEV/EPSS, gates, fix plan, guard, hook, MCP
+examples/             sample lockfiles that are vulnerable on purpose
 notebooks/            the notebook, committed with its full-run outputs and 14 figures
 scripts/              argparse CLIs: acquire, build graph, run pipeline, run evaluation, fetch artifacts, extra figures
-tests/                93 tests: unit tests plus a smoke-pipeline integration test
+tests/                unit tests plus a smoke-pipeline integration test
 results/              committed evidence: 17 figures, 25 metric files, 11 exposure reports, 11 SBOMs
 docs/                 architecture, methodology (with citations), data sources, results, evaluation, glossary
 data/                 not committed; scripts regenerate or fetch it (see data/README.md)
@@ -379,6 +434,8 @@ The corpus is a 2020-01-12 snapshot, which is why the resolver comparison is rep
 
 | page | what it covers |
 |---|---|
+| [scan.md](docs/scan.md) | the `scgraph` command: scan, check, hook, MCP, GitHub Action, pre-commit |
+| [responsible-use.md](docs/responsible-use.md) | how to use scgraph and the public data services fairly |
 | [architecture.md](docs/architecture.md) | the pipeline, the CSR store, the alert ladder, a data-flow diagram |
 | [methodology.md](docs/methodology.md) | every graph and statistical method, with its literature reference and result |
 | [data-sources.md](docs/data-sources.md) | the corpus, exact versions, licenses, how it is parsed |

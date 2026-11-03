@@ -1,0 +1,84 @@
+[
+  {
+    "lockfile": "express-app.package-lock.json",
+    "packages": 90,
+    "advisory_records": 61,
+    "findings": 60,
+    "alerts": 48,
+    "abstained": {
+      "scope": 8,
+      "withdrawn": 4
+    },
+    "fix_actions": 4,
+    "parent_bumps": [
+      {
+        "direct": "express",
+        "from": "4.16.0",
+        "to": "4.22.3",
+        "major": false,
+        "clears_packages": [
+          "body-parser",
+          "cookie",
+          "path-to-regexp",
+          "qs",
+          "send",
+          "serve-static"
+        ],
+        "clears": [
+          "CVE-2022-24999",
+          "CVE-2024-43799",
+          "CVE-2024-43800",
+          "CVE-2024-45296",
+          "CVE-2024-45590",
+          "CVE-2024-47764",
+          "CVE-2024-52798",
+          "CVE-2025-15284",
+          "CVE-2026-111181",
+          "CVE-2026-12590",
+          "CVE-2026-82417"
+        ],
+        "remaining": []
+      }
+    ]
+  },
+  {
+    "lockfile": "flask-api.uv.lock",
+    "packages": 21,
+    "advisory_records": 44,
+    "findings": 22,
+    "alerts": 20,
+    "abstained": {
+      "withdrawn": 1,
+      "scope": 1
+    },
+    "fix_actions": 5,
+    "parent_bumps": []
+  },
+  {
+    "lockfile": "sept-2025-npm-compromise.package-lock.json",
+    "packages": 7,
+    "advisory_records": 6,
+    "findings": 5,
+    "alerts": 4,
+    "abstained": {
+      "withdrawn": 1
+    },
+    "fix_actions": 3,
+    "parent_bumps": [
+      {
+        "direct": "express",
+        "from": "4.21.2",
+        "to": "4.22.0",
+        "major": false,
+        "clears_packages": [
+          "body-parser"
+        ],
+        "clears": [
+          "CVE-2026-111181",
+          "CVE-2026-12590"
+        ],
+        "remaining": []
+      }
+    ]
+  }
+]

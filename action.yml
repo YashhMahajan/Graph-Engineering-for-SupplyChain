@@ -1,0 +1,73 @@
+name: scgraph scan
+description: >-
+  Scan lockfiles for vulnerable and malicious dependencies. Each alert shows the
+  dependency path that proves it and the smallest safe fix.
+author: Yashh Mahajan
+branding:
+  icon: shield
+  color: blue
+
+inputs:
+  path:
+    description: Lockfiles or directories to scan, separated by spaces.
+    default: "."
+  fail-on:
+    description: Fail the step at this priority or worse (P0, P1, P2, P3, P4, any, never).
+    default: "P2"
+  min-severity:
+    description: CVSS floor. Malicious and actively exploited advisories always pass.
+    default: "0"
+  include-dev:
+    description: Also alert on dev-only dependencies (true or false).
+    default: "false"
+  sarif:
+    description: Upload a SARIF report to GitHub code scanning (true or false).
+    default: "true"
+  version:
+    description: The scgraph version to install. Empty means the version of this action.
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v6
+      with:
+        python-version: "3.12"
+    - name: install scgraph
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        if [ -n "$VERSION" ]; then
+          pip install --quiet "scgraph @ git+https://github.com/YashhMahajan/Graph-Engineering-for-SupplyChain@v${VERSION}"
+        else
+          pip install --quiet "$ACTION_PATH"
+        fi
+    - name: scan
+      id: scan
+      shell: bash
+      env:
+        SCAN_PATH: ${{ inputs.path }}
+        FAIL_ON: ${{ inputs.fail-on }}
+        MIN_SEVERITY: ${{ inputs.min-severity }}
+        INCLUDE_DEV: ${{ inputs.include-dev }}
+      run: |
+        dev=""; [ "$INCLUDE_DEV" = "true" ] && dev="--include-dev"
+        # shellcheck disable=SC2086
+        scgraph scan $SCAN_PATH --min-severity "$MIN_SEVERITY" $dev \
+          --format sarif --output scgraph.sarif --fail-on never
+        set +e
+        # shellcheck disable=SC2086
+        scgraph scan $SCAN_PATH --min-severity "$MIN_SEVERITY" $dev \
+          --github-summary --fail-on "$FAIL_ON"
+        echo "exit=$?" >> "$GITHUB_OUTPUT"
+    - name: upload SARIF
+      if: ${{ inputs.sarif == 'true' && always() }}
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: scgraph.sarif
+        category: scgraph
+    - name: result
+      shell: bash
+      run: exit "${{ steps.scan.outputs.exit }}"

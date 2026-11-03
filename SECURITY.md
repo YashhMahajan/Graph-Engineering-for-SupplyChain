@@ -33,6 +33,15 @@ executes code:
 - **Path safety.** Relation names are restricted to `[A-Za-z0-9_-]` before they become
   file names.
 
+## The scanner and the guard
+
+- `scgraph scan` and `scgraph check` only read lockfiles and public metadata. They do
+  not run package code and do not install anything.
+- A guard bypass is a security issue. Examples: a command form that the hook does not
+  read, or a malicious release that `check` allows when OSV has a `MAL-` record for it.
+  Report it in private, as below.
+- Rules for fair use of the tool and the data: [`docs/responsible-use.md`](docs/responsible-use.md).
+
 ## Report a vulnerability
 
 Use GitHub

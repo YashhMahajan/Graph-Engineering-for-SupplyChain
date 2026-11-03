@@ -1,0 +1,7 @@
+- id: scgraph-scan
+  name: scgraph scan
+  description: Block a commit that adds a malicious or exploited dependency.
+  entry: scgraph scan --fail-on P1
+  language: python
+  files: (^|/|\.)(package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|poetry\.lock|uv\.lock|Cargo\.lock|go\.mod|Gemfile\.lock|composer\.lock|Pipfile\.lock|requirements[^/]*\.txt)$
+  pass_filenames: true
