@@ -46,6 +46,13 @@ CI does these checks on each pull request. All checks must pass.
   call to graph construction.
 - **Each alert must have a path.** Do not make a finding that has no resolvable
   dependency path. If reachability is not known, the system abstains.
+- **A failed lookup is never a pass.** In `scgraph scan` and `scgraph check`, a network
+  or data error gives an error or an `unverified` result. It never gives "safe".
+- **Be polite to public services.** New network calls must use the cache in
+  `scgraph.scan.sources`, send the scgraph `User-Agent`, and work offline when possible.
+  Unit tests must not use the network.
+- **Use sample lockfiles that other scanners do not read.** Give them a prefix, for
+  example `examples/name.package-lock.json`.
 - **Report negative results.** If a method does not help, write this in the notebook
   and in the docs.
 - **Text in docs and comments:** use full words, not contractions. Do not use em dashes.
@@ -64,6 +71,12 @@ CI does these checks on each pull request. All checks must pass.
 Add an entry to the resolver (`resolve.py`), to version ordering (`versions.py`), and to
 the Libraries.io platform map (`acquire_full.py`). Add unit tests for version comparison
 and range match. Refer to `docs/methodology.md`.
+
+## Responsible use
+
+Read [`docs/responsible-use.md`](docs/responsible-use.md). Do not add features whose main
+use is attack, for example a list of names to squat or a crawler that lists exposed
+third-party repositories.
 
 ## Security issues
 
