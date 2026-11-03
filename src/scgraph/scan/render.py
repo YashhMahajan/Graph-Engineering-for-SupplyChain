@@ -238,7 +238,10 @@ def to_sarif(results: list[ScanResult], base: str | None = None) -> str:
     res = []
     cache: dict[str, list[str]] = {}
     for r in results:
-        uri = os.path.relpath(r.path, base or Path.cwd()).replace(os.sep, "/")
+        try:
+            uri = os.path.relpath(r.path, base or Path.cwd()).replace(os.sep, "/")
+        except ValueError:  # another drive on Windows: no relative path exists
+            uri = Path(r.path).resolve().as_posix()
         for f in r.alerts:
             rid = f.id
             if rid not in rules:
