@@ -3,8 +3,8 @@ requires = ["hatchling>=1.25"]
 build-backend = "hatchling.build"
 
 [project]
-name = "scgraph"
-version = "1.2.0"
+name = "scgraph-cli"
+version = "1.2.1"
 description = "Graph engineering for software supply-chain impact analysis: CVE exposure with provenance over the open-source dependency graph. Zero LLM calls build the graph."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -69,7 +69,7 @@ notebook = [
     "matplotlib>=3.9",
 ]
 dev = [
-    "scgraph[notebook]",
+    "scgraph-cli[notebook]",
     "ruff>=0.6",
     "mypy>=1.11",
     "pytest>=8.3",
@@ -80,7 +80,7 @@ dev = [
     "types-tqdm",
 ]
 docs = ["mkdocs>=1.6", "mkdocs-material>=9.5", "mkdocstrings[python]>=0.26"]
-all = ["scgraph[gpu,fast,notebook,dev,docs]"]
+all = ["scgraph-cli[gpu,fast,notebook,dev,docs]"]
 
 [project.urls]
 Documentation = "https://github.com/YashhMahajan/Graph-Engineering-for-SupplyChain/tree/main/docs"

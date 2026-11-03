@@ -5,7 +5,7 @@ lockfile, not a guess of the tree. Each alert shows the dependency path that pro
 it. Each finding that is not an alert shows the reason.
 
 ```bash
-pip install git+https://github.com/YashhMahajan/Graph-Engineering-for-SupplyChain
+pipx install scgraph-cli             # or: uvx --from scgraph-cli scgraph scan .
 scgraph scan .
 ```
 
@@ -190,7 +190,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: YashhMahajan/Graph-Engineering-for-SupplyChain@v1.2.0
+      - uses: YashhMahajan/Graph-Engineering-for-SupplyChain@v1.2.1
         with:
           fail-on: P2
 ```
@@ -202,7 +202,7 @@ The action uploads SARIF to code scanning and writes a summary to the job page.
 ```yaml
 repos:
   - repo: https://github.com/YashhMahajan/Graph-Engineering-for-SupplyChain
-    rev: v1.2.0
+    rev: v1.2.1
     hooks:
       - id: scgraph-scan
 ```

@@ -51,7 +51,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
-            gh release create "$TAG" dist/* --title "$TAG" --notes-file notes.md --verify-tag
+            # A release made in the web UI (for example to publish the Action to the
+            # Marketplace) pushes the tag first. Keep its notes and attach the files.
+            if gh release view "$TAG" >/dev/null 2>&1; then
+              gh release upload "$TAG" dist/* --clobber
+            else
+              gh release create "$TAG" dist/* --title "$TAG" --notes-file notes.md --verify-tag
+            fi
           else
             gh release view "$TAG" >/dev/null 2>&1 && { echo "$TAG already released"; exit 1; }
             gh release create "$TAG" dist/* --title "$TAG" --notes-file notes.md --target "$GITHUB_SHA"
