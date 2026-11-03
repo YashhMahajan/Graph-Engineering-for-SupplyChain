@@ -44,7 +44,7 @@ The same engine now runs on your lockfiles. Each alert shows the dependency path
 proves it and the smallest safe fix. Each other finding shows why it is not an alert.
 
 ```bash
-pip install git+https://github.com/YashhMahajan/Graph-Engineering-for-SupplyChain
+pipx install scgraph-cli             # or: uvx --from scgraph-cli scgraph scan .
 scgraph scan .                       # or: scgraph scan examples/
 ```
 

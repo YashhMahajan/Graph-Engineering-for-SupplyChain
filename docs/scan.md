@@ -5,7 +5,7 @@ lockfile, not a guess of the tree. Each alert shows the dependency path that pro
 it. Each finding that is not an alert shows the reason.
 
 ```bash
-pip install git+https://github.com/YashhMahajan/Graph-Engineering-for-SupplyChain
+pipx install scgraph-cli             # or: uvx --from scgraph-cli scgraph scan .
 scgraph scan .
 ```
 

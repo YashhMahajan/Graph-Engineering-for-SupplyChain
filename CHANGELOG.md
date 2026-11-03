@@ -12,6 +12,9 @@ This file records all important changes to this project. The format follows
   go on the GitHub Marketplace.
 - The Scorecard workflow uses `ossf/scorecard-action@v2.4.3`. Version 2.4.0 pulls its
   image from `gcr.io`, which now refuses the download.
+- The distribution name is now `scgraph-cli`, because `scgraph` on PyPI belongs to
+  another project. The command and the import name stay `scgraph`.
+- `.github/workflows/publish-pypi.yml` publishes a tag to PyPI with Trusted Publishing.
 - The release workflow attaches the wheel, the sdist and `SHA256SUMS` to a release that
   already exists (for example one made in the web UI), and does not fail.
 
