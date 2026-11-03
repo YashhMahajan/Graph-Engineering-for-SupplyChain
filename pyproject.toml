@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "scgraph"
-version = "1.1.0"
+version = "1.2.0"
 description = "Graph engineering for software supply-chain impact analysis: CVE exposure with provenance over the open-source dependency graph. Zero LLM calls build the graph."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -88,8 +88,10 @@ Source = "https://github.com/YashhMahajan/Graph-Engineering-for-SupplyChain"
 Issues = "https://github.com/YashhMahajan/Graph-Engineering-for-SupplyChain/issues"
 Changelog = "https://github.com/YashhMahajan/Graph-Engineering-for-SupplyChain/blob/main/CHANGELOG.md"
 
-# Command-line entry points live in scripts/ (argparse wrappers around the library),
-# so the package stays import-only and the CLIs are easy to read end to end.
+# The `scgraph` command: scan lockfiles, guard installs, serve MCP. The research and
+# reproduction CLIs stay in scripts/ as argparse wrappers around the library.
+[project.scripts]
+scgraph = "scgraph.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/scgraph"]
