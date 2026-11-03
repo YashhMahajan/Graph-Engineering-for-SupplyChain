@@ -46,6 +46,9 @@ def _scan(a: argparse.Namespace) -> int:
     )
     src = default_osv(a.offline)
     sig = Signals(enabled=not a.no_signals)
+    from .scan.sources import http_json
+
+    registry = None if a.no_registry else http_json
     results = []
     for f in files:
         try:
@@ -54,7 +57,7 @@ def _scan(a: argparse.Namespace) -> int:
             print(f"scgraph: cannot parse {f}: {type(e).__name__}: {e}", file=sys.stderr)
             return 2
         try:
-            results.append(engine.scan_graph(g, src, sig, policy))
+            results.append(engine.scan_graph(g, src, sig, policy, registry=registry))
         except Exception as e:
             print(
                 f"scgraph: advisory lookup failed for {f}: {type(e).__name__}: {e}", file=sys.stderr
@@ -116,6 +119,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--offline", metavar="DIR", help="match against OSV all.zip dumps in DIR (see fetch-osv)"
     )
     s.add_argument("--no-signals", action="store_true", help="skip CISA KEV and EPSS lookups")
+    s.add_argument(
+        "--no-registry",
+        action="store_true",
+        help="skip registry lookups (direct-dependency bump planning)",
+    )
     s.add_argument(
         "--fail-on",
         choices=list(FAIL_LEVELS),

@@ -13,6 +13,7 @@ from scgraph.scan import render
 from scgraph.scan.engine import Ignore, Policy, load_ignores, scan_graph
 from scgraph.scan.lockfiles import parse
 from scgraph.scan.sources import OSVOffline, Signals
+from scgraph.scan.upgrade import parent_upgrades
 
 
 def rec(
@@ -191,6 +192,40 @@ def test_fix_plan_takes_smallest_version_clearing_everything(lock: Path) -> None
     assert plan["parser"]["to"] == "1.3.0"  # 1.2.5 fixes one advisory but not the other
     assert plan["parser"]["via"] == ["web@1.0.0"]
     assert plan["chalk"]["action"] == "remove"
+
+
+def test_parent_upgrade_finds_the_direct_bump(lock: Path) -> None:
+    g = parse(lock)
+    res = scan_graph(g, FakeOSV(RECORDS), FakeSignals())
+    docs = {
+        "web": {
+            "versions": {
+                "1.0.0": {"dependencies": {"parser": "1.2.0"}},
+                "1.1.0": {"dependencies": {"parser": "~1.2.4"}},  # 1.2.5: still has GHSA-aaaa
+                "1.2.0-beta": {"dependencies": {"parser": "^1.3.0"}},  # prerelease, skipped
+                "1.2.0": {"dependencies": {"parser": "^1.3.0"}},
+                "2.0.0": {"dependencies": {}},
+            }
+        },
+        "parser": {"versions": {v: {} for v in ("1.2.0", "1.2.5", "1.3.0", "1.4.0")}},
+    }
+
+    def fetch(url: str):
+        return docs.get(url.rsplit("/", 1)[-1])
+
+    hits = FakeOSV(RECORDS).query(g.pkgs)
+    bumps = parent_upgrades(g, res.findings, hits, fetch)
+    assert bumps == [
+        {
+            "direct": "web",
+            "from": "1.0.0",
+            "to": "1.2.0",
+            "major": False,
+            "clears_packages": ["parser"],
+            "clears": ["CVE-2024-0001", "GHSA-low"],
+            "remaining": [],
+        }
+    ]
 
 
 def test_renderers(lock: Path) -> None:
