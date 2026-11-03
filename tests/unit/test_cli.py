@@ -31,7 +31,7 @@ def test_cli_scan_exit_codes_and_formats(tmp_path: Path, monkeypatch, capsys) ->
         ),
         encoding="utf-8",
     )
-    base = ["scan", str(proj), "--offline", str(osv), "--no-signals", "--no-registry"]
+    base = ["scan", str(proj), "--offline", str(osv), "--no-signals"]
     assert main(base) == 1
     assert "CVE-2024-0001" in capsys.readouterr().out
     assert main([*base, "--fail-on", "P0"]) == 0  # worst alert is P2

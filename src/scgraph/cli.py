@@ -2,19 +2,14 @@
 
     scgraph scan [PATH ...] [--format text|json|sarif|markdown] [--fail-on P2]
     scgraph scan . --advisory CVE-2021-44228          incident mode: are we hit, and where?
-    scgraph check npm left-pad@1.3.0                  pre-install guard
-    scgraph hook claude-code                          PreToolUse hook (reads the event on stdin)
-    scgraph mcp                                       MCP server over stdio
     scgraph fetch-osv --dir osv npm pypi              OSV dumps for --offline
 
-Exit codes. scan: 0 no alert at or above --fail-on, 1 alerts, 2 error.
-check: 0 allow, 1 warn, 2 block.
+Exit codes: 0 no alert at or above --fail-on, 1 alerts, 2 error.
 """
 
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import sys
 from pathlib import Path
@@ -51,9 +46,6 @@ def _scan(a: argparse.Namespace) -> int:
     )
     src = default_osv(a.offline)
     sig = Signals(enabled=not a.no_signals)
-    from .scan.sources import http_json
-
-    registry = None if a.no_registry else http_json
     results = []
     for f in files:
         try:
@@ -62,7 +54,7 @@ def _scan(a: argparse.Namespace) -> int:
             print(f"scgraph: cannot parse {f}: {type(e).__name__}: {e}", file=sys.stderr)
             return 2
         try:
-            results.append(engine.scan_graph(g, src, sig, policy, registry=registry))
+            results.append(engine.scan_graph(g, src, sig, policy))
         except Exception as e:
             print(
                 f"scgraph: advisory lookup failed for {f}: {type(e).__name__}: {e}", file=sys.stderr
@@ -85,45 +77,6 @@ def _scan(a: argparse.Namespace) -> int:
     level = FAIL_LEVELS[a.fail_on]
     worst = [int(f.priority[1]) for r in results for f in r.alerts]
     return 1 if level >= 0 and any(w <= level for w in worst) else 0
-
-
-def _check(a: argparse.Namespace) -> int:
-    from .scan.guard import check_package, normalize_ecosystem, parse_spec
-
-    eco = normalize_ecosystem(a.ecosystem)
-    worst = 0
-    out = []
-    for spec in a.packages:
-        name, ver = parse_spec(spec, eco)
-        c = check_package(eco, name, ver, cooldown_hours=a.cooldown)
-        out.append(c)
-        worst = max(worst, {"allow": 0, "warn": 1, "block": 2}[c.verdict])
-    if a.json:
-        print(json.dumps([c.to_dict() for c in out], indent=2))
-    else:
-        for c in out:
-            print(c.line())
-    return worst
-
-
-def _hook(a: argparse.Namespace) -> int:
-    from .scan.agent import claude_code_hook
-
-    try:
-        event = json.load(sys.stdin)
-    except ValueError:
-        return 0
-    decision = claude_code_hook(event)
-    if decision:
-        print(json.dumps(decision))
-    return 0
-
-
-def _mcp(a: argparse.Namespace) -> int:
-    from .scan.agent import serve_mcp
-
-    serve_mcp()
-    return 0
 
 
 def _fetch_osv(a: argparse.Namespace) -> int:
@@ -164,11 +117,6 @@ def build_parser() -> argparse.ArgumentParser:
     )
     s.add_argument("--no-signals", action="store_true", help="skip CISA KEV and EPSS lookups")
     s.add_argument(
-        "--no-registry",
-        action="store_true",
-        help="skip registry lookups (direct-dependency bump planning)",
-    )
-    s.add_argument(
         "--fail-on",
         choices=list(FAIL_LEVELS),
         default="any",
@@ -180,22 +128,6 @@ def build_parser() -> argparse.ArgumentParser:
     )
     s.add_argument("-v", "--verbose", action="store_true", help="list every abstention")
     s.set_defaults(fn=_scan)
-
-    c = sub.add_parser("check", help="should this package be installed? (pre-install guard)")
-    c.add_argument("ecosystem", help="npm, pypi, cargo, go, gem, composer")
-    c.add_argument("packages", nargs="+", metavar="NAME[@VERSION]")
-    c.add_argument(
-        "--cooldown", type=float, default=48.0, help="hours a release must age (default 48)"
-    )
-    c.add_argument("--json", action="store_true")
-    c.set_defaults(fn=_check)
-
-    h = sub.add_parser("hook", help="agent hooks (reads the hook event JSON on stdin)")
-    h.add_argument("agent", choices=["claude-code"])
-    h.set_defaults(fn=_hook)
-
-    m = sub.add_parser("mcp", help="run the MCP server over stdio")
-    m.set_defaults(fn=_mcp)
 
     o = sub.add_parser("fetch-osv", help="download OSV all.zip dumps for --offline")
     o.add_argument("ecosystems", nargs="+", help="npm pypi cargo go maven rubygems packagist nuget")
