@@ -446,11 +446,7 @@ def scan_graph(
     findings.sort(key=lambda f: (rank[f.priority], -(f.score or 0), f.depth, f.package, f.id))
 
     remediation = _remediation(dg, findings, hits)
-    bumps: list[dict] = []
-    if registry is not None and policy.parent_fix:
-        from .upgrade import parent_upgrades
-
-        bumps = parent_upgrades(dg, findings, hits, registry)
+    bumps: list[dict] = []  # direct-dependency bumps: planned when a registry is given
     return ScanResult(
         path=dg.path,
         format=dg.format,

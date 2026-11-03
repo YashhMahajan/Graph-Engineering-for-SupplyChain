@@ -6,7 +6,33 @@ import json
 import zipfile
 from pathlib import Path
 
-from tests.unit.test_scan_engine import RECORDS
+
+RECORDS = [
+    {
+        "id": "GHSA-aaaa",
+        "aliases": ["CVE-2024-0001"],
+        "summary": "critical",
+        "severity": [{"type": "CVSS_V3", "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"}],
+        "affected": [
+            {
+                "package": {"ecosystem": "npm", "name": "parser"},
+                "ranges": [{"type": "SEMVER", "events": [{"introduced": "0"}, {"fixed": "1.3.0"}]}],
+            }
+        ],
+    },
+    {
+        "id": "GHSA-low",
+        "aliases": [],
+        "summary": "low",
+        "severity": [{"type": "CVSS_V3", "score": "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:U/C:N/I:L/A:N"}],
+        "affected": [
+            {
+                "package": {"ecosystem": "npm", "name": "parser"},
+                "ranges": [{"type": "SEMVER", "events": [{"introduced": "0"}, {"fixed": "1.2.5"}]}],
+            }
+        ],
+    },
+]
 
 from scgraph.cli import main
 
