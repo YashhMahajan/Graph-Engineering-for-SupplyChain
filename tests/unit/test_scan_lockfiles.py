@@ -340,3 +340,12 @@ def test_prefixed_names_are_lockfiles(tmp_path: Path) -> None:
     assert [x.label for x in parse(p).pkgs] == ["flask@2.0.0"]
     assert lockfile_project(p) == "api"
     assert find_lockfiles(tmp_path) == [p]
+
+
+def test_examples_parse() -> None:
+    root = Path(__file__).resolve().parents[2] / "examples"
+    graphs = {p.name: parse(p) for p in find_lockfiles(root)}
+    assert len(graphs) == 3
+    mal = graphs["sept-2025-npm-compromise.package-lock.json"]
+    assert ("body-parser@1.20.3", "debug@4.4.2") in _edge_labels(mal)
+    assert {p.label for p in mal.pkgs if p.dev} == {"jest@29.7.0"}
