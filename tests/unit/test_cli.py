@@ -6,6 +6,7 @@ import json
 import zipfile
 from pathlib import Path
 
+from scgraph.cli import main
 
 RECORDS = [
     {
@@ -33,8 +34,6 @@ RECORDS = [
         ],
     },
 ]
-
-from scgraph.cli import main
 
 
 def test_cli_scan_exit_codes_and_formats(tmp_path: Path, monkeypatch, capsys) -> None:
