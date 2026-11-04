@@ -467,3 +467,7 @@ survey *Graph Engineering in the Era of LLM Agents* (arXiv:2608.21156v2).
 
 Licensed under [Apache-2.0](LICENSE). The bundled advisory and dependency data keep their
 upstream licenses.
+
+The figures in `results/figures/` and `docs/figures/` are covered by the same license. If
+you reuse one, please credit it as: *Yashh Mahajan, scgraph*, with a link to this
+repository.
