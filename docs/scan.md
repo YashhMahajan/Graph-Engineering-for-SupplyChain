@@ -68,7 +68,7 @@ A prefixed name also works, for example `api.uv.lock` or `web.package-lock.json`
 
 | option | effect |
 |---|---|
-| `-f, --format` | `text` (default), `json`, `sarif`, `markdown` |
+| `-f, --format` | `text` (default), `json`, `sarif`, `markdown`, `openvex` |
 | `-o, --output FILE` | write the report to a file |
 | `--fail-on LEVEL` | exit 1 at this priority or worse: `P0` to `P4`, `any` (default), `never` |
 | `--min-severity N` | CVSS floor |
@@ -228,3 +228,22 @@ for result in scan(".", policy=Policy(min_severity=7.0)):
 - The direct-dependency bump is for npm only.
 - A path shows that the package is installed. It does not show that your code calls
   the vulnerable function.
+
+
+## VEX output
+
+`scgraph scan . --format openvex` writes an [OpenVEX](https://openvex.dev) 0.2.0 document,
+so the "why is this not an alert" answers travel with your SBOM.
+
+| scgraph verdict | VEX statement |
+|---|---|
+| alert | `affected`, with the fix and the dependency path as the action statement |
+| abstained: `path` (no path from a declared root) | `not_affected`, `component_not_present` |
+| abstained: `scope` (dev dependencies only) | `not_affected`, `vulnerable_code_not_in_execute_path` |
+| abstained: `withdrawn`, `severity`, `ignored` | no statement |
+
+Only abstentions that make a claim about exploitability become `not_affected`. A severity
+floor and an ignore entry are policy (an ignore can mean "accepted risk"), and a withdrawn
+advisory is not a vulnerability, so none of those three is written as a VEX claim. The
+`scope` justification is inferred from the lockfile graph, not from a call graph, and the
+statement says so.

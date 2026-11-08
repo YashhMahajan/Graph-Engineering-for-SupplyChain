@@ -4,6 +4,14 @@ This file records all important changes to this project. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `scgraph scan --format openvex`: an OpenVEX 0.2.0 document. Alerts are `affected` with
+  the path in the action statement; `path` and `scope` abstentions are `not_affected`
+  with a justification. Severity-floor, ignored and withdrawn findings emit nothing.
+
 ## [1.2.1] - 2026-11-03
 
 ### Fixed
