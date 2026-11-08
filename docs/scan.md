@@ -92,7 +92,7 @@ A prefixed name also works, for example `api.uv.lock` or `web.package-lock.json`
 
 | option | effect |
 |---|---|
-| `-f, --format` | `text` (default), `json`, `sarif`, `markdown`, `openvex` |
+| `-f, --format` | `text` (default), `json`, `sarif`, `markdown`, `openvex`, `html` |
 | `-o, --output FILE` | write the report to a file |
 | `--fail-on LEVEL` | exit 1 at this priority or worse: `P0` to `P4`, `any` (default), `never` |
 | `--min-severity N` | CVSS floor |
@@ -282,6 +282,34 @@ repos:
 The hook runs only when a lockfile changes. It blocks malicious and exploited
 dependencies (`--fail-on P1`).
 
+## HTML report
+
+`scgraph scan . --format html -o report.html` writes one self-contained page: no script,
+no remote resource, collapsible dependency paths and the fix for each alert. Every
+lockfile-derived string is escaped, advisory links are percent-encoded, and a strict
+Content-Security-Policy `<meta>` forbids scripts and network loads even if an escape were
+ever missed, so the file is safe to attach to a ticket or open from an email.
+
+## Import-level hint: `--imports`
+
+```bash
+scgraph scan . --imports
+```
+
+Marks each alert `imported` or `not imported`: does the project's own source import the
+dependency at the top of the alert's path (the package itself when it is direct, otherwise
+the direct dependency that pulls it in)? It is a **hint, not a call graph**. It never
+suppresses an alert and never changes the exit code.
+
+- JavaScript and TypeScript: `require`, `import ... from`, `import 'x'` and dynamic
+  `import()` are recognised. `not imported` means no source file imports it. A package used
+  through configuration (a Babel or ESLint plugin, a Jest preset, a bundler loader) is never
+  imported in source, so it can show `not imported` while being in use.
+- PyPI: only `imported` is ever shown. A distribution and its import name differ (`pyyaml` is
+  imported as `yaml`), so not seeing the name proves nothing.
+- Other ecosystems, and projects with no source files, show nothing.
+- It does not answer "is the vulnerable function called".
+
 ## Review a pull request: `scgraph diff`
 
 ```bash
@@ -316,6 +344,30 @@ no alert passes even in a repository full of old ones. Rules:
 
 `diff` takes the same options as `scan`: `--min-severity`, `--include-dev`, `--vex`,
 `--ignore-file`, `--offline`, `--no-signals` and `--no-registry`.
+
+## Scan history: when were we first exposed?
+
+```bash
+scgraph scan . --history .scgraph-history          # record this scan
+scgraph history .scgraph-history --advisory CVE-2021-44228
+scgraph history .scgraph-history --advisory CVE-2021-44228 --receipt answer.json
+scgraph history .scgraph-history --check answer.json
+scgraph history .scgraph-history --verify
+```
+
+`--history DIR` records each scan in a bitemporal, hash-chained ledger (`scgraph.core.Ledger`).
+An exposure opens at the first recorded scan that alerts on an advisory and closes at the
+first later scan that does not, so the history shows first exposure, the fix, and any
+regression as separate episodes. Any alias works in a query (GHSA, CVE, PYSEC).
+
+- A window starts at the **first recorded scan that alerted**, not when the code became
+  vulnerable. It can only be as early as you began recording.
+- `--receipt` writes the ledger's verifiable receipt for the answer, and `--check` verifies
+  it later: the log is hash-chained, so editing or deleting a past scan breaks `--verify`.
+- Exit code of `history --advisory`: `1` while any episode is still open, else `0`.
+- "Alert" means what that scan's policy said, so record with the same options each time.
+  `--history` cannot be combined with `--advisory`, because a subset scan would close
+  every exposure it did not look at.
 
 ## Audit agent and IDE config: `scgraph audit`
 
