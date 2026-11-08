@@ -4,6 +4,68 @@ This file records all important changes to this project. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-11-08
+
+### Added
+
+- `scgraph scan --format openvex`: an OpenVEX 0.2.0 document. Alerts are `affected` with
+  the path in the action statement; `path` and `scope` abstentions are `not_affected`
+  with a justification. Severity-floor, ignored and withdrawn findings emit nothing.
+  Each product is unique per lockfile, so same-named folders do not collide.
+- `scgraph scan --vex FILE` (repeatable): `not_affected` and `fixed` statements from an
+  OpenVEX file suppress matching findings as a `vex` abstention. The newest statement
+  wins, malware is never suppressed, and malformed files exit 2.
+- **`scgraph diff --base REF`**: scan each lockfile at a git ref and in the working tree
+  and report only the difference: new alerts with their paths, resolved alerts, package
+  changes and the count of inherited alerts. The exit code counts new alerts only. Output:
+  text, JSON and a Markdown comment with a hidden marker for a sticky pull-request comment.
+- GitHub Action `mode: diff`, `base` and `comment` inputs: comments only what a pull
+  request introduces and edits one comment authored by `github-actions[bot]`.
+- **Release anomalies in `scgraph check` (npm)**: warnings when a release differs from
+  its predecessor: `publisher_changed`, `maintainer_added`, `provenance_dropped`,
+  `install_script_added`, `backport_published` and `publish_burst`. They use only the
+  registry document the guard already fetches, examine releases from the last 14 days, and
+  also apply to the Claude Code hook and the MCP server.
+- **Five more input formats**: `pnpm-lock.yaml` (v6 to v9), `bun.lock`, `gradle.lockfile`
+  and `buildscript-gradle.lockfile`, CycloneDX JSON (`*.cdx.json`, `bom.json`) and SPDX
+  JSON (`*.spdx.json`). An SBOM's ecosystem comes from each purl, so one file can mix
+  registries; components with no pinned, supported purl are skipped.
+- **`scgraph audit`**: audit `.mcp.json`, Claude and Gemini settings, Cursor and VS Code MCP
+  config and `.vscode/tasks.json` for code that runs on its own. It flags unpinned `npx` and
+  `uvx` launchers, `runOn: folderOpen` tasks, download-and-execute commands and
+  `enableAllProjectMcpServers`, and sends each launched package through the guard.
+  Unreadable config is a warning, never a pass. Exit codes: 0, 1 warn, 2 block.
+- **Scan history**: `scgraph scan --history DIR` records each scan in the bitemporal
+  ledger, and `scgraph history DIR --advisory ID` answers when exposure began, when it was
+  fixed and whether it regressed, with a verifiable receipt (`--receipt`, `--check`,
+  `--verify`). A window starts at the first recorded scan, not when the code became
+  vulnerable. `--history` refuses `--advisory`, because a subset scan would close exposures.
+- `--format html`: a self-contained report with no script, no remote resource, escaped
+  lockfile text and a strict Content-Security-Policy.
+- `scan --reachability`: for a direct Python dependency whose advisory names vulnerable
+  functions (`affected_functions`, or Go `imports[].symbols`), read the source with `ast`
+  and mark the alert `reachable`, `not_called` or `not_analyzed`. Import aliases resolve.
+  It never suppresses an alert or changes the exit code, and `not_called` means no
+  reference found, not proof. `Finding` gains `symbols` and `reachability`.
+- `scan --imports`: a hint that marks an alert `imported` or `not imported` by whether the
+  project's source imports the dependency at the top of its path. It never suppresses an
+  alert or changes the exit code, it is not a call graph, and PyPI is only ever `imported`.
+
+### Changed
+
+- When a release adds an install script, the guard reports `install_script_added` instead
+  of the generic `install_scripts` warning, so the script is not listed twice.
+
+### Fixed
+
+- Lockfile text is neutralised before it enters Markdown (`md_safe`). A hostile package
+  name could close a code span or fence, add a table cell, inject HTML or ping a GitHub
+  user in a PR comment or job summary. Affects `--format markdown` and `--github-summary`.
+- A malformed `until=` date in `.scgraph-ignore` now names the file, line and value.
+- Two unclosed file handles (`parse.py`, `acquire.py`). The one in `parse.py` made the
+  smoke-pipeline test fail intermittently, because the test config turns a
+  `ResourceWarning` into an error.
+
 ## [1.2.1] - 2026-11-03
 
 ### Fixed

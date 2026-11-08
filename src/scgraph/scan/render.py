@@ -7,16 +7,32 @@ Abstentions are shown everywhere in summary form: nothing is hidden, only ranked
 
 from __future__ import annotations
 
+import hashlib
+import html
 import json
 import os
+import re
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
+from urllib.parse import quote
+from uuid import NAMESPACE_URL, uuid5
 
 from .. import __version__
 from ..versions import compare
 from .engine import Finding, ScanResult
+from .lockfiles import lockfile_project
 
-__all__ = ["portfolio_summary", "to_json", "to_markdown", "to_sarif", "to_text"]
+__all__ = [
+    "md_safe",
+    "portfolio_summary",
+    "to_html",
+    "to_json",
+    "to_markdown",
+    "to_openvex",
+    "to_sarif",
+    "to_text",
+]
 
 _COLOR = {
     "P0": "1;97;41",
@@ -31,6 +47,18 @@ _COLOR = {
 _TAG = {"P0": "MALICIOUS", "P1": "EXPLOITED", "P2": "CRITICAL", "P3": "HIGH", "P4": "ALERT"}
 
 
+_MD_UNSAFE = re.compile(r"[`<>|\r\n\\]")
+
+
+def md_safe(text: object) -> str:
+    """Neutralise text that came from a lockfile before it goes into Markdown.
+
+    A pull-request author controls the lockfile, and a package name is not validated. A
+    backtick, ``<``, ``>``, ``|``, a backslash or a newline could close a code span or fence,
+    inject HTML or break a table row in a comment, so each becomes ``_``."""
+    return _MD_UNSAFE.sub("_", str(text))
+
+
 def _use_color(stream=None) -> bool:
     stream = stream or sys.stdout
     if os.environ.get("NO_COLOR"):
@@ -40,6 +68,9 @@ def _use_color(stream=None) -> bool:
 
 def _c(s: str, key: str, on: bool) -> str:
     return f"\033[{_COLOR[key]}m{s}\033[0m" if on else s
+
+
+_REACH_TEXT = {"reachable": "vulnerable function called", "not_called": "function not called"}
 
 
 def _signal_bits(f: Finding) -> str:
@@ -52,6 +83,10 @@ def _signal_bits(f: Finding) -> str:
         bits.append(f"epss {f.epss:.2f}")
     if f.dev_only:
         bits.append("dev")
+    if f.imported in ("imported", "not_imported"):
+        bits.append(f.imported.replace("_", " "))
+    if f.reachability in _REACH_TEXT:
+        bits.append(_REACH_TEXT[f.reachability])
     return " · ".join(bits)
 
 
@@ -90,6 +125,10 @@ def to_text(results: list[ScanResult], color: bool | None = None, verbose: bool 
             ep = max((f.epss or 0 for f in fs), default=0)
             if ep:
                 meta.append(f"epss {ep:.2f}")
+            if top.imported in ("imported", "not_imported"):
+                meta.append(top.imported.replace("_", " "))
+            if top.reachability in _REACH_TEXT:
+                meta.append(_REACH_TEXT[top.reachability])
             tag = _c(f" {top.priority} {_TAG[top.priority]} ", top.priority, on)
             lines.append(
                 f"\n {tag} {_c(f'{pkg}@{ver}', 'b', on)}  {_c(' · '.join(meta), 'dim', on)}"
@@ -312,7 +351,7 @@ def to_markdown(results: list[ScanResult]) -> str:
     for r in results:
         ab = r.abstention_counts()
         out.append(
-            f"### `{r.path}` · {r.n_packages} packages · {len(r.alerts)} alerts · "
+            f"### `{md_safe(r.path)}` · {r.n_packages} packages · {len(r.alerts)} alerts · "
             f"{sum(ab.values())} abstained"
         )
         if not r.alerts:
@@ -321,14 +360,165 @@ def to_markdown(results: list[ScanResult]) -> str:
         out += ["", "| | advisory | package | signals | fix |", "|---|---|---|---|---|"]
         for f in r.alerts:
             out.append(
-                f"| **{f.priority}** | [{f.id}](https://osv.dev/vulnerability/{f.ids[0]}) | "
-                f"`{f.package}@{f.version}` | {_signal_bits(f)} | {f.fix} |"
+                f"| **{f.priority}** | "
+                f"[{md_safe(f.id)}](https://osv.dev/vulnerability/{md_safe(f.ids[0])}) | "
+                f"`{md_safe(f.package)}@{md_safe(f.version)}` | {md_safe(_signal_bits(f))} | "
+                f"`{md_safe(f.fix)}` |"
             )
         out += ["", "<details><summary>dependency paths (the evidence)</summary>", "", "```"]
         for f in r.alerts:
-            out.append(f"{f.id}: " + " -> ".join(f.path or []))
+            out.append(f"{md_safe(f.id)}: " + " -> ".join(md_safe(h) for h in f.path or []))
         out += ["```", "</details>", ""]
         if ab:
             out.append("Abstained: " + ", ".join(f"{k} {v}" for k, v in sorted(ab.items())) + ".")
             out.append("")
+    return "\n".join(out)
+
+
+# OpenVEX 0.2.0. Only abstentions that make a claim about exploitability become
+# ``not_affected``; the severity floor and ignore entries are policy, not exploitability,
+# and a withdrawn advisory is not a vulnerability at all, so those three emit nothing.
+_VEX_CONTEXT = "https://openvex.dev/ns/v0.2.0"
+_VEX_NOT_AFFECTED = {
+    "path": (
+        "component_not_present",
+        "No dependency path from the project's declared roots reaches this package in the "
+        "lockfile graph.",
+    ),
+    "scope": (
+        "vulnerable_code_not_in_execute_path",
+        "Reachable only through dev dependencies, so it is not part of the production "
+        "dependency graph. Inferred from the lockfile, not from a call graph.",
+    ),
+}
+
+
+def _vex_product(path: str) -> str:
+    """The VEX product for one lockfile, made unique per file so two projects that share a
+    directory name (two ``frontend/`` folders) stay distinct. Inside the working directory
+    the qualifier is the relative path. Outside it, a short hash of the resolved path keeps
+    the id unique without publishing the parent directories."""
+    name = quote(lockfile_project(path), safe="")
+    try:
+        rel = os.path.relpath(path).replace(os.sep, "/")
+    except ValueError:  # another drive on Windows: no relative path exists
+        rel = ".."
+    if not rel.startswith(".."):
+        return f"pkg:generic/{name}?lockfile={quote(rel, safe='/')}"
+    digest = hashlib.sha256(str(Path(path).resolve()).encode()).hexdigest()[:10]
+    return f"pkg:generic/{name}?path-sha256={digest}"
+
+
+def to_openvex(results: list[ScanResult], author: str = "scgraph") -> str:
+    """An OpenVEX document: alerts are ``affected`` with the path as the action statement,
+    graph-proven abstentions are ``not_affected`` with a justification."""
+    statements: list[dict] = []
+    for r in results:
+        product = {"@id": _vex_product(r.path)}
+        for f in r.findings:
+            if f.alert:
+                stmt = {
+                    "status": "affected",
+                    "action_statement": f"{f.fix}. Path: {' -> '.join(f.path or [])}",
+                }
+            elif f.reason in _VEX_NOT_AFFECTED:
+                just, why = _VEX_NOT_AFFECTED[f.reason]
+                stmt = {"status": "not_affected", "justification": just, "impact_statement": why}
+            else:
+                continue
+            statements.append(
+                {
+                    "vulnerability": {
+                        "name": f.id,
+                        "aliases": sorted(set(f.ids + f.aliases) - {f.id}),
+                    },
+                    "products": [{**product, "subcomponents": [{"@id": f.purl}]}],
+                    **stmt,
+                }
+            )
+    body = json.dumps(statements, sort_keys=True)
+    doc = {
+        "@context": _VEX_CONTEXT,
+        "@id": f"https://openvex.dev/docs/scgraph/{uuid5(NAMESPACE_URL, body)}",
+        "author": author,
+        "role": "Automated scanner",
+        "timestamp": datetime.now(UTC).isoformat(timespec="seconds"),
+        "version": 1,
+        "tooling": f"scgraph {__version__}",
+        "statements": statements,
+    }
+    return json.dumps(doc, indent=2)
+
+
+# ----------------------------------------------------------------------------- HTML
+_HTML_CSS = """
+:root{--bg:#fff;--fg:#1a1a1a;--mut:#666;--card:#f6f6f7;--line:#ddd;--P0:#b00020;--P1:#c62828;
+--P2:#d84315;--P3:#b26a00;--P4:#00695c;--ok:#2e7d32}
+@media(prefers-color-scheme:dark){:root{--bg:#161618;--fg:#e8e8ea;--mut:#9a9aa0;--card:#202023;
+--line:#3a3a3f;--P0:#ff5c70;--P1:#ff7b72;--P2:#ff9f6e;--P3:#e0a040;--P4:#4db6ac;--ok:#66bb6a}}
+body{margin:0 auto;max-width:60rem;padding:1rem 16px 3rem;background:var(--bg);color:var(--fg);
+font:15px/1.5 system-ui,sans-serif}
+h1{font-size:1.4rem}
+h2{font-size:1.1rem;margin-top:2rem;word-break:break-all}
+.mut{color:var(--mut)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:6px;
+padding:.75rem 1rem;margin:.75rem 0}
+.tag{font-weight:700;color:var(--c)}
+code,pre{font:13px ui-monospace,monospace}
+pre{margin:.4rem 0;overflow-x:auto}
+.fix{color:var(--ok)}
+summary{cursor:pointer}
+a{color:inherit}
+"""
+
+
+def _h(x: object) -> str:
+    return html.escape(str(x), quote=True)
+
+
+def to_html(results: list[ScanResult]) -> str:
+    """One self-contained page: no script, no remote resource, every lockfile string escaped.
+
+    A Content-Security-Policy meta forbids scripts and network loads even if an escape were
+    ever missed, so the file is safe to attach to a ticket or open from an email."""
+    n = sum(len(r.alerts) for r in results)
+    out = [
+        "<!doctype html><html lang=en><head><meta charset=utf-8>",
+        '<meta name=viewport content="width=device-width,initial-scale=1">',
+        "<meta http-equiv=Content-Security-Policy "
+        "content=\"default-src 'none'; style-src 'unsafe-inline'\">",
+        f"<title>scgraph report</title><style>{_HTML_CSS}</style></head><body>",
+        f"<h1>scgraph: {n} alert{'s' * (n != 1)} across {len(results)} lockfile(s)</h1>",
+        f"<p class=mut>scgraph {_h(__version__)}. Each alert carries the dependency path "
+        "that proves it. Everything else is an abstention with a reason.</p>",
+    ]
+    for r in results:
+        ab = r.abstention_counts()
+        out.append(
+            f"<h2>{_h(r.path)}</h2><p class=mut>{_h(r.format)} · {r.n_packages} packages · "
+            f"{len(r.alerts)} alerts · {sum(ab.values())} abstained</p>"
+        )
+        if not r.alerts:
+            out.append("<p class=fix>No alert survived the gates.</p>")
+        for f in r.alerts:
+            link = _h(f"https://osv.dev/vulnerability/{quote(f.ids[0], safe='')}")
+            bits = _signal_bits(f)
+            head = (
+                f"<span class=tag>{_h(f.priority)} {_h(_TAG[f.priority])}</span> "
+                f"<a href='{link}'>{_h(f.id)}</a> · "
+                f"<code>{_h(f.package)}@{_h(f.version)}</code>"
+            )
+            if bits:
+                head += f" <span class=mut>{_h(bits)}</span>"
+            path = _h(" \u2192 ".join(f.path or []))
+            out.append(
+                f"<div class=card style='--c:var(--{_h(f.priority)})'>{head}"
+                f"<details open><summary>dependency path</summary><pre>{path}</pre></details>"
+                f"<div class=fix>fix: {_h(f.fix)}</div></div>"
+            )
+        if ab:
+            out.append("<details><summary>abstained</summary><ul>")
+            out += [f"<li>{_h(k)}: {v}</li>" for k, v in sorted(ab.items())]
+            out.append("</ul></details>")
+    out.append("</body></html>")
     return "\n".join(out)

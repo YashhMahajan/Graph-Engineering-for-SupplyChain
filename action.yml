@@ -21,6 +21,15 @@ inputs:
   sarif:
     description: Upload a SARIF report to GitHub code scanning (true or false).
     default: "true"
+  mode:
+    description: "scan (every alert) or diff (only alerts the pull request introduces)."
+    default: "scan"
+  base:
+    description: Git ref to compare against in diff mode. Empty means the pull request's base branch.
+    default: ""
+  comment:
+    description: In diff mode, post one sticky pull-request comment (true or false).
+    default: "true"
   version:
     description: The scgraph version to install. Empty means the version of this action.
     default: ""
@@ -44,6 +53,7 @@ runs:
         fi
     - name: scan
       id: scan
+      if: ${{ inputs.mode != 'diff' }}
       shell: bash
       env:
         SCAN_PATH: ${{ inputs.path }}
@@ -61,11 +71,61 @@ runs:
           --github-summary --fail-on "$FAIL_ON"
         echo "exit=$?" >> "$GITHUB_OUTPUT"
     - name: upload SARIF
-      if: ${{ inputs.sarif == 'true' && always() }}
+      if: ${{ inputs.mode != 'diff' && inputs.sarif == 'true' && always() }}
       uses: github/codeql-action/upload-sarif@v3
       with:
         sarif_file: scgraph.sarif
         category: scgraph
+    - name: diff
+      id: diff
+      if: ${{ inputs.mode == 'diff' }}
+      shell: bash
+      env:
+        SCAN_PATH: ${{ inputs.path }}
+        FAIL_ON: ${{ inputs.fail-on }}
+        MIN_SEVERITY: ${{ inputs.min-severity }}
+        INCLUDE_DEV: ${{ inputs.include-dev }}
+        BASE_INPUT: ${{ inputs.base }}
+        BASE_REF: ${{ github.base_ref }}
+      run: |
+        if [ -z "$BASE_INPUT" ] && [ -z "$BASE_REF" ]; then
+          echo "::error::diff mode needs the 'base' input outside pull_request events"
+          echo "exit=2" >> "$GITHUB_OUTPUT"; exit 0
+        fi
+        base="$BASE_INPUT"
+        if [ -z "$base" ]; then
+          git fetch --no-tags --depth=1 origin "+refs/heads/$BASE_REF:refs/remotes/origin/$BASE_REF"
+          base="origin/$BASE_REF"
+        fi
+        dev=""; [ "$INCLUDE_DEV" = "true" ] && dev="--include-dev"
+        set +e
+        # shellcheck disable=SC2086
+        scgraph diff $SCAN_PATH --base "$base" --min-severity "$MIN_SEVERITY" $dev \
+          --format markdown --output scgraph-diff.md --fail-on "$FAIL_ON"
+        code=$?
+        [ -f scgraph-diff.md ] && cat scgraph-diff.md >> "$GITHUB_STEP_SUMMARY"
+        echo "exit=$code" >> "$GITHUB_OUTPUT"
+    - name: comment on the pull request
+      if: ${{ inputs.mode == 'diff' && inputs.comment == 'true' && github.event_name == 'pull_request' && always() }}
+      continue-on-error: true  # a pull request from a fork has a read-only token
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        REPO: ${{ github.repository }}
+        PR: ${{ github.event.pull_request.number }}
+      run: |
+        [ -f scgraph-diff.md ] || exit 0
+        # edit our own earlier comment (marker + authored by the bot), else create one
+        id=$(gh api "repos/$REPO/issues/$PR/comments" --paginate \
+          --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | startswith("<!-- scgraph-diff -->"))) | .id' | head -n1)
+        if [ -n "$id" ]; then
+          gh api -X PATCH "repos/$REPO/issues/comments/$id" -F body=@scgraph-diff.md
+        else
+          gh api -X POST "repos/$REPO/issues/$PR/comments" -F body=@scgraph-diff.md
+        fi
     - name: result
       shell: bash
-      run: exit "${{ steps.scan.outputs.exit }}"
+      env:
+        SCAN_EXIT: ${{ steps.scan.outputs.exit }}
+        DIFF_EXIT: ${{ steps.diff.outputs.exit }}
+      run: exit "${SCAN_EXIT:-${DIFF_EXIT:-2}}"

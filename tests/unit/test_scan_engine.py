@@ -273,3 +273,165 @@ def test_offline_source_matches_dumps_and_builds_an_index(tmp_path: Path) -> Non
     again = scan_graph(parse(lock), OSVOffline(osv), Signals(enabled=False))  # from the index
     assert {f.id for f in again.alerts} == {"CVE-2024-0001", "GHSA-low"}
     assert src.get("MAL-2025-1")["id"] == "MAL-2025-1"
+
+
+def test_openvex_maps_alerts_and_graph_proven_abstentions(lock: Path) -> None:
+    res = scan_graph(parse(lock), FakeOSV(RECORDS), FakeSignals())
+    doc = json.loads(render.to_openvex([res]))
+    assert doc["@context"] == "https://openvex.dev/ns/v0.2.0"
+    st = {s["vulnerability"]["name"]: s for s in doc["statements"]}
+    # alert -> affected, with the dependency path as the action statement
+    a = st["CVE-2024-0001"]
+    assert a["status"] == "affected"
+    assert "app -> web@1.0.0 -> parser@1.2.0" in a["action_statement"]
+    assert a["vulnerability"]["aliases"] == ["GHSA-aaaa", "PYSEC-dup"]
+    assert a["products"][0]["@id"].startswith("pkg:generic/app?")
+    assert a["products"][0]["subcomponents"][0]["@id"].startswith("pkg:npm/")
+    # graph-proven abstentions -> not_affected with a justification
+    assert st["GHSA-orph"]["status"] == "not_affected"
+    assert st["GHSA-orph"]["justification"] == "component_not_present"
+    assert st["GHSA-dev"]["justification"] == "vulnerable_code_not_in_execute_path"
+    # a withdrawn advisory is not a vulnerability: no statement
+    assert "GHSA-gone" not in st
+
+
+def test_openvex_never_turns_policy_into_a_not_affected_claim(lock: Path) -> None:
+    ignores = [Ignore("CVE-2024-0001", "accepted risk")]
+    res = scan_graph(
+        parse(lock), FakeOSV(RECORDS), FakeSignals(), Policy(min_severity=9.0, ignores=ignores)
+    )
+    reasons = {f.id: f.reason for f in res.findings}
+    assert reasons["CVE-2024-0001"] == "ignored" and reasons["GHSA-low"] == "severity"
+    names = {s["vulnerability"]["name"] for s in json.loads(render.to_openvex([res]))["statements"]}
+    assert not names & {"CVE-2024-0001", "GHSA-low"}  # ignored and below-floor stay silent
+
+
+def test_openvex_product_purl_is_percent_encoded(tmp_path: Path) -> None:
+    lock = tmp_path / "my app#x%" / "package-lock.json"  # legal on Windows too
+    lock.parent.mkdir()
+    lock.write_text(json.dumps({"lockfileVersion": 3, "packages": {"": {}}}), encoding="utf-8")
+    res = scan_graph(parse(lock), FakeOSV([]), FakeSignals())
+    res.findings.append(_stub_finding())
+    doc = json.loads(render.to_openvex([res]))
+    assert doc["statements"][0]["products"][0]["@id"].startswith("pkg:generic/my%20app%23x%25?")
+
+
+def _stub_finding():
+    from scgraph.scan.engine import Finding
+
+    return Finding(
+        id="GHSA-x",
+        ids=["GHSA-x"],
+        aliases=[],
+        summary="",
+        package="p",
+        version="1.0.0",
+        ecosystem="npm",
+        purl="pkg:npm/p@1.0.0",
+        score=None,
+        severity="unknown",
+        malicious=False,
+        withdrawn=False,
+        kev=False,
+        epss=None,
+        epss_percentile=None,
+        path=None,
+        dev_only=False,
+        fixed_in=None,
+        fix="",
+        alert=False,
+        reason="path",
+    )
+
+
+def _vex(*stmts, ts="2026-01-01T00:00:00Z"):
+    from scgraph.scan.vex import VexIndex, parse_vex
+
+    doc = {"@context": "https://openvex.dev/ns/v0.2.0", "timestamp": ts, "statements": list(stmts)}
+    return VexIndex(parse_vex(doc))
+
+
+def _vs(vuln, purl, status="not_affected", **kw):
+    s = {"vulnerability": {"name": vuln}, "products": [{"@id": purl}], "status": status, **kw}
+    if status == "not_affected":
+        s.setdefault("impact_statement", "supplier says the code path is not used")
+    if status == "affected":
+        s.setdefault("action_statement", "upgrade")
+    return s
+
+
+def test_vex_not_affected_turns_an_alert_into_a_named_abstention(lock: Path) -> None:
+    vex = _vex(_vs("CVE-2024-0001", "pkg:npm/parser@1.2.0"))
+    res = scan_graph(parse(lock), FakeOSV(RECORDS), FakeSignals(), Policy(vex=vex))
+    f = by_id(res)["CVE-2024-0001"]
+    assert (f.alert, f.reason) == (False, "vex")
+    assert "VEX" in f.detail
+
+
+def test_vex_matches_on_any_alias_of_the_merged_finding(lock: Path) -> None:
+    vex = _vex(_vs("GHSA-aaaa", "pkg:npm/parser@1.2.0"))  # the CVE finding merged this id
+    res = scan_graph(parse(lock), FakeOSV(RECORDS), FakeSignals(), Policy(vex=vex))
+    assert by_id(res)["CVE-2024-0001"].reason == "vex"
+
+
+def test_vex_for_another_version_does_not_suppress(lock: Path) -> None:
+    vex = _vex(_vs("CVE-2024-0001", "pkg:npm/parser@9.9.9"))
+    res = scan_graph(parse(lock), FakeOSV(RECORDS), FakeSignals(), Policy(vex=vex))
+    assert by_id(res)["CVE-2024-0001"].alert
+
+
+def test_a_newer_affected_statement_revokes_the_suppression(lock: Path) -> None:
+    old = _vs("CVE-2024-0001", "pkg:npm/parser@1.2.0", timestamp="2026-01-01T00:00:00Z")
+    new = _vs("CVE-2024-0001", "pkg:npm/parser@1.2.0", "affected", timestamp="2026-02-01T00:00:00Z")
+    res = scan_graph(parse(lock), FakeOSV(RECORDS), FakeSignals(), Policy(vex=_vex(old, new)))
+    assert by_id(res)["CVE-2024-0001"].alert
+
+
+def test_vex_can_never_suppress_malware(lock: Path) -> None:
+    vex = _vex(_vs("MAL-2025-1", "pkg:npm/chalk@5.6.1"))
+    res = scan_graph(parse(lock), FakeOSV(RECORDS), FakeSignals(), Policy(vex=vex))
+    f = by_id(res)["MAL-2025-1"]
+    assert f.alert and f.priority == "P0"
+
+
+def test_openvex_products_stay_distinct_for_same_named_directories(tmp_path: Path) -> None:
+    locks = []
+    for repo in ("one", "two"):
+        p = tmp_path / repo / "frontend" / "package-lock.json"
+        p.parent.mkdir(parents=True)
+        p.write_text(
+            json.dumps(
+                {
+                    "lockfileVersion": 3,
+                    "packages": {
+                        "": {"dependencies": {"parser": "1"}},
+                        "node_modules/parser": {"version": "1.2.0"},
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        locks.append(p)
+    results = [scan_graph(parse(p), FakeOSV(RECORDS), FakeSignals()) for p in locks]
+    ids = {s["products"][0]["@id"] for s in json.loads(render.to_openvex(results))["statements"]}
+    assert len(ids) == 2 and all(i.startswith("pkg:generic/frontend?") for i in ids)
+    assert not any(str(tmp_path) in i for i in ids)  # no absolute path is published
+
+
+def test_load_ignores_names_the_file_line_and_value_of_a_bad_date(tmp_path: Path) -> None:
+    f = tmp_path / ".scgraph-ignore"
+    f.write_text("GHSA-ok until=2027-01-31\nGHSA-bad until=2027-13-45  # typo\n", encoding="utf-8")
+    with pytest.raises(ValueError, match=r"\.scgraph-ignore:2: bad date '2027-13-45'"):
+        load_ignores(f)
+
+
+def test_scan_markdown_cannot_be_broken_by_a_hostile_package_name(lock: Path) -> None:
+    res = scan_graph(parse(lock), FakeOSV(RECORDS), FakeSignals())
+    evil = "x`</details><img src=//evil/p.png>|` ```\n## injected"
+    f = res.alerts[0]
+    f.package, f.fix, f.path = evil, f"upgrade {evil}", ["app", evil]
+    md = render.to_markdown([res])
+    assert "<img" not in md and "\n## injected" not in md
+    row = next(line for line in md.splitlines() if f"**{f.priority}**" in line)
+    assert row.count("|") == 6  # the attacker's pipe did not add a table cell
+    assert md.count("```") == 2

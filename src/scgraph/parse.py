@@ -14,6 +14,7 @@ Tables (parquet, under PQ):
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -41,6 +42,12 @@ class Interner:
         return len(self.keys)
 
 
+def _lines(p: Path) -> Iterator[str]:
+    """Stream a text file line by line and close it when the loop ends."""
+    with p.open(encoding="utf-8") as fh:
+        yield from fh
+
+
 def build_tables(raw_dir: str, pq_dir: str, ecosystems, smoke=True) -> dict:
     raw, PQ = Path(raw_dir), Path(pq_dir)
     PQ.mkdir(parents=True, exist_ok=True)
@@ -57,7 +64,7 @@ def build_tables(raw_dir: str, pq_dir: str, ecosystems, smoke=True) -> dict:
         p = dd / f"{eco}.jsonl"
         if not p.exists():
             continue
-        for line in p.open(encoding="utf-8"):
+        for line in _lines(p):
             rec = json.loads(line)
             e = rec["ecosystem"]
             root_pid = pkg((e, rec["package"]))

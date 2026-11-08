@@ -66,7 +66,75 @@ def test_guard_allows_a_quiet_old_release() -> None:
 def test_guard_warns_on_fresh_release_with_install_script() -> None:
     c = check_package("npm", "left-pad", "1.4.0", fetch=registry(NPM_LEFTPAD), osv=NoOSV(), now=NOW)
     assert c.verdict == "warn"
-    assert {r["code"] for r in c.reasons} == {"fresh_release", "install_scripts"}
+    # the new-install-script signal replaces the generic one, it does not repeat it
+    assert {r["code"] for r in c.reasons} == {"fresh_release", "install_script_added"}
+
+
+def _pkg(*releases, **top):
+    """An npm registry document. releases: (version, ISO time, version document)."""
+    return {
+        "/pkg": {
+            "time": {"created": "2020-01-01T00:00:00Z", **{v: t for v, t, _ in releases}},
+            "dist-tags": {"latest": releases[-1][0]},
+            "versions": {v: d for v, _, d in releases},
+            "maintainers": [{"name": "alice"}],
+            **top,
+        }
+    }
+
+
+def _v(user="alice", maintainers=("alice",), attested=False, scripts=None):
+    d = {
+        "_npmUser": {"name": user},
+        "maintainers": [{"name": m} for m in maintainers],
+        "dist": {"attestations": {"url": "x"}} if attested else {},
+    }
+    if scripts:
+        d["scripts"] = scripts
+    return d
+
+
+def test_guard_flags_a_release_that_looks_like_an_account_takeover() -> None:
+    docs = _pkg(
+        ("1.0.0", "2026-10-01T00:00:00Z", _v(attested=True)),
+        ("1.0.1", "2026-10-30T00:00:00Z", _v("mallory", ("alice", "mallory"))),
+    )
+    c = check_package("npm", "pkg", "1.0.1", fetch=registry(docs), osv=NoOSV(), now=NOW)
+    assert c.verdict == "warn"
+    assert {r["code"] for r in c.reasons} == {
+        "publisher_changed",
+        "maintainer_added",
+        "provenance_dropped",
+    }
+    assert next(r for r in c.reasons if r["code"] == "publisher_changed")["message"].count("'") == 4
+
+
+def test_guard_stays_quiet_for_an_unremarkable_recent_release() -> None:
+    docs = _pkg(("1.0.0", "2026-10-01T00:00:00Z", _v()), ("1.0.1", "2026-10-20T00:00:00Z", _v()))
+    c = check_package("npm", "pkg", "1.0.1", fetch=registry(docs), osv=NoOSV(), now=NOW)
+    assert c.verdict == "allow" and c.reasons == []
+
+
+def test_guard_keeps_the_generic_install_script_warning_when_there_is_no_history() -> None:
+    docs = _pkg(("1.0.0", "2026-10-01T00:00:00Z", _v(scripts={"postinstall": "node x.js"})))
+    c = check_package("npm", "pkg", "1.0.0", fetch=registry(docs), osv=NoOSV(), now=NOW)
+    assert [r["code"] for r in c.reasons] == ["install_scripts"]
+
+
+def test_guard_reports_a_failed_history_comparison_instead_of_assuming_it_is_fine(
+    monkeypatch,
+) -> None:
+    import scgraph.scan.guard as guard
+
+    def boom(*a, **k):
+        raise ValueError("bad history")
+
+    monkeypatch.setattr(guard, "npm_release_anomalies", boom)
+    docs = _pkg(("1.0.0", "2026-10-01T00:00:00Z", _v()), ("1.0.1", "2026-10-20T00:00:00Z", _v()))
+    c = check_package("npm", "pkg", "1.0.1", fetch=registry(docs), osv=NoOSV(), now=NOW)
+    assert c.verdict == "warn"
+    assert [r["code"] for r in c.reasons] == ["unverified"]
+    assert "bad history" in c.reasons[0]["message"]
 
 
 def test_guard_blocks_malicious_release() -> None:

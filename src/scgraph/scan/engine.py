@@ -11,6 +11,7 @@ Gates, in order (the first one that empties the evidence names the abstention):
   path        no dependency path from a declared root reaches the package
   scope       reachable only through dev dependencies (malicious code is never
               exempt: install scripts run in CI and on laptops)
+  vex         a supplied OpenVEX statement says not_affected or fixed (never for malware)
   severity    below the severity floor (actively exploited or malicious is never exempt)
   ignored     suppressed by an ignore entry that has not expired
 
@@ -35,7 +36,9 @@ from ..cvss import band, base_score
 from ..versions import affected as _affected
 from ..versions import compare
 from .lockfiles import DepGraph, lockfile_project, pep503
+from .reachability import symbols_of
 from .sources import Signals
+from .vex import VexIndex
 
 __all__ = ["Finding", "Ignore", "Policy", "ScanResult", "load_ignores", "scan_graph"]
 
@@ -60,7 +63,7 @@ def load_ignores(path: str | FsPath) -> list[Ignore]:
     p = FsPath(path)
     if not p.exists():
         return out
-    for raw in p.read_text(encoding="utf-8").splitlines():
+    for n, raw in enumerate(p.read_text(encoding="utf-8").splitlines(), 1):
         body, _, reason = raw.partition("#")
         parts = body.split()
         if not parts:
@@ -68,7 +71,12 @@ def load_ignores(path: str | FsPath) -> list[Ignore]:
         until = None
         for tok in parts[1:]:
             if tok.startswith("until="):
-                until = date.fromisoformat(tok[6:])
+                try:
+                    until = date.fromisoformat(tok[6:])
+                except ValueError:
+                    raise ValueError(
+                        f"{p}:{n}: bad date {tok[6:]!r} in {tok!r}; use until=YYYY-MM-DD"
+                    ) from None
         out.append(Ignore(parts[0], reason.strip(), until))
     return out
 
@@ -79,6 +87,7 @@ class Policy:
     include_dev: bool = False
     ignores: list[Ignore] = field(default_factory=list)
     only: set[str] = field(default_factory=set)  # incident mode: these advisory ids only
+    vex: VexIndex | None = None  # supplier statements that suppress findings
     parent_fix: bool = True  # plan direct-dependency bumps for transitive alerts (npm, online)
     today: date = field(default_factory=date.today)
 
@@ -108,6 +117,9 @@ class Finding:
     reason: str = ""  # "alert", or the gate that abstained
     detail: str = ""
     priority: str = ""
+    imported: str = ""  # import-level hint: imported | not_imported | unknown | "" (not run)
+    symbols: list[str] = field(default_factory=list)  # vulnerable functions the advisory names
+    reachability: str = ""  # reachable | not_called | not_analyzed | "" (not run)
 
     @property
     def depth(self) -> int:
@@ -319,6 +331,9 @@ def _gates(policy: Policy) -> Ladder:
         ids = f.all_ids()
         return not any(i.id in ids and i.active(policy.today) for i in policy.ignores)
 
+    def not_vex_suppressed(f: Finding, ctx: dict) -> bool:
+        return f.malicious or policy.vex is None or policy.vex.match(f.all_ids(), f.purl) is None
+
     return Ladder(
         [
             Gate("withdrawn", "advisory withdrawn upstream", lambda f, c: not f.withdrawn),
@@ -330,6 +345,7 @@ def _gates(policy: Policy) -> Ladder:
                 "reachable only through dev dependencies (--include-dev to alert)",
                 lambda f, c: policy.include_dev or not f.dev_only or f.malicious,
             ),
+            Gate("vex", "a supplied VEX statement says not_affected or fixed", not_vex_suppressed),
             Gate(
                 "severity",
                 f"below the severity floor {policy.min_severity}",
@@ -432,6 +448,7 @@ def scan_graph(
                 dev_only=p.dev,
                 fixed_in=fixed,
                 fix=fix,
+                symbols=[] if mal else symbols_of(entries),
             )
         )
     if policy.only:
