@@ -5,13 +5,14 @@
     scgraph scan . --vex supplier.vex.json            apply a supplier's VEX statements
     scgraph diff --base origin/main                   only what this change introduced
     scgraph check npm left-pad@1.3.0                  pre-install guard
+    scgraph audit                                     audit agent and IDE config (.mcp.json, hooks)
     scgraph hook claude-code                          PreToolUse hook (reads the event on stdin)
     scgraph mcp                                       MCP server over stdio
     scgraph fetch-osv --dir osv npm pypi              OSV dumps for --offline
 
 Exit codes. scan: 0 no alert at or above --fail-on, 1 alerts, 2 error.
 diff: the same, counting only the alerts the change introduced.
-check: 0 allow, 1 warn, 2 block.
+check: 0 allow, 1 warn, 2 block. audit: 0 nothing above info, 1 warn, 2 block.
 """
 
 from __future__ import annotations
@@ -148,6 +149,34 @@ def _diff(a: argparse.Namespace) -> int:
     return 1 if level >= 0 and any(w <= level for w in worst) else 0
 
 
+def _audit(a: argparse.Namespace) -> int:
+    from .scan import agentconfig
+    from .scan.guard import check_package
+
+    paths = [Path(p) for p in a.paths or ["."]]
+    for p in paths:
+        if not p.exists():
+            print(f"scgraph: no such file or directory: {p}", file=sys.stderr)
+            return 2
+    checker = None if a.offline_check else check_package
+    findings = agentconfig.audit(paths, checker)
+    if a.json:
+        print(agentconfig.to_json(findings))
+    else:
+        for f in findings:
+            if f.level == "info" and not a.verbose:
+                continue
+            where = f" {f.where}" if f.where else ""
+            print(f"{f.level.upper():5} {f.file}{where}: [{f.code}] {f.message}")
+        autos = sum(1 for f in findings if f.code == "runs_automatically")
+        flagged = sum(1 for f in findings if f.level != "info")
+        print(
+            f"\n{autos} command(s) run automatically, {flagged} finding(s)"
+            + ("" if a.verbose or not autos else " (-v lists every command)")
+        )
+    return {"info": 0, "warn": 1, "block": 2}[agentconfig.worst(findings)]
+
+
 def _check(a: argparse.Namespace) -> int:
     from .scan.guard import check_package, normalize_ecosystem, parse_spec
 
@@ -262,6 +291,20 @@ def build_parser() -> argparse.ArgumentParser:
     d.add_argument("-o", "--output", help="write the report here instead of stdout")
     _add_shared_scan_options(d)
     d.set_defaults(fn=_diff)
+
+    u = sub.add_parser(
+        "audit",
+        help="audit AI-agent and IDE config (.mcp.json, hooks, tasks) for supply-chain risk",
+    )
+    u.add_argument("paths", nargs="*", help="project directories or config files (default: .)")
+    u.add_argument("--json", action="store_true")
+    u.add_argument("-v", "--verbose", action="store_true", help="list every automatic command")
+    u.add_argument(
+        "--offline-check",
+        action="store_true",
+        help="skip the registry and OSV lookups, report only what the files themselves show",
+    )
+    u.set_defaults(fn=_audit)
 
     c = sub.add_parser("check", help="should this package be installed? (pre-install guard)")
     c.add_argument("ecosystem", help="npm, pypi, cargo, go, gem, composer")
