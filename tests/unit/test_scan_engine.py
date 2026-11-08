@@ -416,3 +416,10 @@ def test_openvex_products_stay_distinct_for_same_named_directories(tmp_path: Pat
     ids = {s["products"][0]["@id"] for s in json.loads(render.to_openvex(results))["statements"]}
     assert len(ids) == 2 and all(i.startswith("pkg:generic/frontend?") for i in ids)
     assert not any(str(tmp_path) in i for i in ids)  # no absolute path is published
+
+
+def test_load_ignores_names_the_file_line_and_value_of_a_bad_date(tmp_path: Path) -> None:
+    f = tmp_path / ".scgraph-ignore"
+    f.write_text("GHSA-ok until=2027-01-31\nGHSA-bad until=2027-13-45  # typo\n", encoding="utf-8")
+    with pytest.raises(ValueError, match=r"\.scgraph-ignore:2: bad date '2027-13-45'"):
+        load_ignores(f)
