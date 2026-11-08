@@ -25,24 +25,32 @@ from . import __version__
 FAIL_LEVELS = {"P0": 0, "P1": 1, "P2": 2, "P3": 3, "P4": 4, "any": 4, "never": -1}
 
 
-def _scan(a: argparse.Namespace) -> int:
-    from .scan import engine, lockfiles, render
-    from .scan.sources import Signals, default_osv
+class _CliError(Exception):
+    """A user-facing error: printed as ``scgraph: <message>`` with exit code 2."""
+
+
+def _collect_lockfiles(paths: list[str]) -> list[Path]:
+    from .scan import lockfiles
 
     files: list[Path] = []
-    for p in a.paths or ["."]:
+    for p in paths or ["."]:
         pp = Path(p)
         if not pp.exists():
-            print(f"scgraph: no such file or directory: {p}", file=sys.stderr)
-            return 2
+            raise _CliError(f"no such file or directory: {p}")
         found = lockfiles.find_lockfiles(pp)
         if pp.is_file() and not lockfiles.is_lockfile(pp):
-            print(f"scgraph: not a supported lockfile: {p}", file=sys.stderr)
-            return 2
+            raise _CliError(f"not a supported lockfile: {p}")
         files += found
     if not files:
-        print("scgraph: no lockfiles found", file=sys.stderr)
-        return 2
+        raise _CliError("no lockfiles found")
+    return files
+
+
+def _scan_context(a: argparse.Namespace):
+    """Policy, advisory source, signals and registry fetcher from the shared scan options."""
+    from .scan import engine
+    from .scan.sources import Signals, default_osv, http_json
+
     vex = None
     if a.vex:
         from .scan.vex import VexError, load_vex
@@ -50,21 +58,28 @@ def _scan(a: argparse.Namespace) -> int:
         try:
             vex = load_vex(a.vex)
         except VexError as e:
-            print(f"scgraph: {e}", file=sys.stderr)
-            return 2
+            raise _CliError(str(e)) from e
     ignore_file = a.ignore_file or (".scgraph-ignore" if Path(".scgraph-ignore").exists() else None)
     policy = engine.Policy(
         min_severity=a.min_severity,
         include_dev=a.include_dev,
         ignores=engine.load_ignores(ignore_file) if ignore_file else [],
-        only=set(a.advisory or []),
+        only=set(getattr(a, "advisory", None) or []),
         vex=vex,
     )
-    src = default_osv(a.offline)
-    sig = Signals(enabled=not a.no_signals)
-    from .scan.sources import http_json
-
     registry = None if a.no_registry else http_json
+    return policy, default_osv(a.offline), Signals(enabled=not a.no_signals), registry
+
+
+def _scan(a: argparse.Namespace) -> int:
+    from .scan import engine, lockfiles, render
+
+    try:
+        files = _collect_lockfiles(a.paths)
+        policy, src, sig, registry = _scan_context(a)
+    except _CliError as e:
+        print(f"scgraph: {e}", file=sys.stderr)
+        return 2
     results = []
     for f in files:
         try:
