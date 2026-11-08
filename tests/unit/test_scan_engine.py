@@ -423,3 +423,15 @@ def test_load_ignores_names_the_file_line_and_value_of_a_bad_date(tmp_path: Path
     f.write_text("GHSA-ok until=2027-01-31\nGHSA-bad until=2027-13-45  # typo\n", encoding="utf-8")
     with pytest.raises(ValueError, match=r"\.scgraph-ignore:2: bad date '2027-13-45'"):
         load_ignores(f)
+
+
+def test_scan_markdown_cannot_be_broken_by_a_hostile_package_name(lock: Path) -> None:
+    res = scan_graph(parse(lock), FakeOSV(RECORDS), FakeSignals())
+    evil = "x`</details><img src=//evil/p.png>|` ```\n## injected"
+    f = res.alerts[0]
+    f.package, f.fix, f.path = evil, f"upgrade {evil}", ["app", evil]
+    md = render.to_markdown([res])
+    assert "<img" not in md and "\n## injected" not in md
+    row = next(line for line in md.splitlines() if f"**{f.priority}**" in line)
+    assert row.count("|") == 6  # the attacker's pipe did not add a table cell
+    assert md.count("```") == 2
