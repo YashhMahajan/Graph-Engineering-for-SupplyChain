@@ -134,11 +134,37 @@ Use it before you add a dependency. The result is `ALLOW`, `WARN` or `BLOCK`.
 | WARN | the package is younger than 30 days |
 | WARN | the name is one edit from a popular package |
 | WARN | npm install scripts, or a PyPI version with no wheel |
+| WARN | npm release anomalies (see below) |
 | WARN | deprecated, yanked, or known vulnerabilities |
 | WARN | scgraph cannot check the registry or OSV (`unverified`) |
 
 scgraph does not change "cannot check" into "safe". Exit codes: `0` allow, `1` warn,
 `2` block.
+
+### Release anomalies (npm)
+
+The September 2025 to 2026 npm worms published malicious versions of real packages. Some
+carried **valid Sigstore provenance**, because the attacker ran the build inside the
+maintainers' own CI. Provenance shows where a package was built, not who asked for the
+build, so `scgraph check` also compares a release with the one before it, using only
+fields the registry already returns (no extra request):
+
+| code | fires when |
+|---|---|
+| `publisher_changed` | a different account published it than the previous release |
+| `maintainer_added` | the maintainer list gained a name |
+| `provenance_dropped` | the previous release had a provenance attestation and this one has none |
+| `install_script_added` | it has a `preinstall`, `install` or `postinstall` script and the previous release had none (replaces the generic `install_scripts` warning) |
+| `backport_published` | it was published after a higher stable version existed |
+| `publish_burst` | five or more versions appeared within fifteen minutes |
+
+Only releases from the last 14 days are examined, because a release that has survived for
+months is not suspicious for who published it. Every signal is a **warning** with the
+evidence in the message, never a block: each has innocent causes (a team changes its
+publisher, a project backports a fix), so the guard states the cause and lets a person
+judge. PyPI, crates.io and the other registries do not return this history in the
+document the guard fetches, so for them these signals are not checked. If the comparison
+itself fails, the result is `unverified`, never clean.
 
 ## AI coding agents
 
