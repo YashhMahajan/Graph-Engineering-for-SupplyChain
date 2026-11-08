@@ -247,3 +247,29 @@ floor and an ignore entry are policy (an ignore can mean "accepted risk"), and a
 advisory is not a vulnerability, so none of those three is written as a VEX claim. The
 `scope` justification is inferred from the lockfile graph, not from a call graph, and the
 statement says so.
+
+Each statement's product is `pkg:generic/<project>?lockfile=<relative path>`, so two
+projects with the same folder name stay distinct. A lockfile outside the working
+directory gets `?path-sha256=<hash>` instead, so parent directories are not published.
+With `--advisory` (incident mode) only the matching advisories are scanned, so the VEX
+document covers only those advisories. Do not publish it as the project's full VEX.
+
+### Applying a supplier's VEX
+
+```bash
+scgraph scan . --vex supplier.vex.json
+```
+
+A `not_affected` or `fixed` statement turns a matching finding into an abstention with the
+reason `vex`. It never disappears from the counts. Rules:
+
+- A statement matches on the advisory id **or any alias** (GHSA, CVE, PYSEC) and on the
+  package purl. A purl without a version covers every version.
+- For one advisory and package, the **newest timestamp wins**, so a later `affected`
+  statement revokes an earlier `not_affected`.
+- Only `not_affected` and `fixed` suppress. `affected` and `under_investigation` never do.
+- **Malicious packages are never suppressed**, whatever the file says.
+- Parsing is strict. A `not_affected` without a justification or impact statement, an
+  unknown status or a bad purl stops the scan with exit code 2, because silently ignoring
+  one statement could hide a real finding. Repeat `--vex` to merge several files.
+
