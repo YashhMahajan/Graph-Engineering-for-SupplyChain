@@ -15,9 +15,19 @@ This file records all important changes to this project. The format follows
 - `scgraph scan --vex FILE` (repeatable): `not_affected` and `fixed` statements from an
   OpenVEX file suppress matching findings as a `vex` abstention. The newest statement
   wins, malware is never suppressed, and malformed files exit 2.
+- **`scgraph diff --base REF`**: scan each lockfile at a git ref and in the working tree
+  and report only the difference: new alerts with their paths, resolved alerts, package
+  changes and the count of inherited alerts. The exit code counts new alerts only. Output:
+  text, JSON and a Markdown comment with a hidden marker for a sticky pull-request comment.
+- GitHub Action `mode: diff`, `base` and `comment` inputs: comments only what a pull
+  request introduces and edits one comment authored by `github-actions[bot]`.
 
 ### Fixed
 
+- Lockfile text is neutralised before it enters Markdown (`md_safe`). A hostile package
+  name could close a code span or fence, add a table cell, inject HTML or ping a GitHub
+  user in a PR comment or job summary. Affects `--format markdown` and `--github-summary`.
+- A malformed `until=` date in `.scgraph-ignore` now names the file, line and value.
 - Two unclosed file handles (`parse.py`, `acquire.py`). The one in `parse.py` made the
   smoke-pipeline test fail intermittently, because the test config turns a
   `ResourceWarning` into an error.
