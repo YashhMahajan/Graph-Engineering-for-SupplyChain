@@ -42,6 +42,11 @@ This file records all important changes to this project. The format follows
   vulnerable. `--history` refuses `--advisory`, because a subset scan would close exposures.
 - `--format html`: a self-contained report with no script, no remote resource, escaped
   lockfile text and a strict Content-Security-Policy.
+- `scan --reachability`: for a direct Python dependency whose advisory names vulnerable
+  functions (`affected_functions`, or Go `imports[].symbols`), read the source with `ast`
+  and mark the alert `reachable`, `not_called` or `not_analyzed`. Import aliases resolve.
+  It never suppresses an alert or changes the exit code, and `not_called` means no
+  reference found, not proof. `Finding` gains `symbols` and `reachability`.
 - `scan --imports`: a hint that marks an alert `imported` or `not imported` by whether the
   project's source imports the dependency at the top of its path. It never suppresses an
   alert or changes the exit code, it is not a call graph, and PyPI is only ever `imported`.

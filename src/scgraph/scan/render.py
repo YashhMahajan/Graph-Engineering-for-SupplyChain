@@ -70,6 +70,9 @@ def _c(s: str, key: str, on: bool) -> str:
     return f"\033[{_COLOR[key]}m{s}\033[0m" if on else s
 
 
+_REACH_TEXT = {"reachable": "vulnerable function called", "not_called": "function not called"}
+
+
 def _signal_bits(f: Finding) -> str:
     bits = []
     if f.score is not None and not f.malicious:
@@ -82,6 +85,8 @@ def _signal_bits(f: Finding) -> str:
         bits.append("dev")
     if f.imported in ("imported", "not_imported"):
         bits.append(f.imported.replace("_", " "))
+    if f.reachability in _REACH_TEXT:
+        bits.append(_REACH_TEXT[f.reachability])
     return " · ".join(bits)
 
 
@@ -122,6 +127,8 @@ def to_text(results: list[ScanResult], color: bool | None = None, verbose: bool 
                 meta.append(f"epss {ep:.2f}")
             if top.imported in ("imported", "not_imported"):
                 meta.append(top.imported.replace("_", " "))
+            if top.reachability in _REACH_TEXT:
+                meta.append(_REACH_TEXT[top.reachability])
             tag = _c(f" {top.priority} {_TAG[top.priority]} ", top.priority, on)
             lines.append(
                 f"\n {tag} {_c(f'{pkg}@{ver}', 'b', on)}  {_c(' · '.join(meta), 'dim', on)}"

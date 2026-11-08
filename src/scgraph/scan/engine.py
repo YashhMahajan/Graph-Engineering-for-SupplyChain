@@ -36,6 +36,7 @@ from ..cvss import band, base_score
 from ..versions import affected as _affected
 from ..versions import compare
 from .lockfiles import DepGraph, lockfile_project, pep503
+from .reachability import symbols_of
 from .sources import Signals
 from .vex import VexIndex
 
@@ -117,6 +118,8 @@ class Finding:
     detail: str = ""
     priority: str = ""
     imported: str = ""  # import-level hint: imported | not_imported | unknown | "" (not run)
+    symbols: list[str] = field(default_factory=list)  # vulnerable functions the advisory names
+    reachability: str = ""  # reachable | not_called | not_analyzed | "" (not run)
 
     @property
     def depth(self) -> int:
@@ -445,6 +448,7 @@ def scan_graph(
                 dev_only=p.dev,
                 fixed_in=fixed,
                 fix=fix,
+                symbols=[] if mal else symbols_of(entries),
             )
         )
     if policy.only:

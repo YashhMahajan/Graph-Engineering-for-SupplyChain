@@ -308,7 +308,31 @@ suppresses an alert and never changes the exit code.
 - PyPI: only `imported` is ever shown. A distribution and its import name differ (`pyyaml` is
   imported as `yaml`), so not seeing the name proves nothing.
 - Other ecosystems, and projects with no source files, show nothing.
-- It does not answer "is the vulnerable function called".
+- It does not answer "is the vulnerable function called". For that, see `--reachability`.
+
+### Function-level reachability: `--reachability`
+
+```bash
+scgraph scan . --reachability
+```
+
+Some advisories name the vulnerable functions (OSV `affected_functions`, or `imports[].symbols`
+in the Go database). For those, and for a **direct Python dependency**, scgraph reads your
+source with `ast` and checks whether it references one. Aliases resolve: `import yaml as y;
+y.load(x)` and `from yaml import load as ld; ld(x)` both match `yaml.load`. Each alert gets
+one verdict, shown next to it and in the JSON as `reachability`:
+
+| verdict | meaning |
+|---|---|
+| `reachable` | project source references a listed vulnerable function |
+| `not_called` | the advisory lists functions and no reference to any was found |
+| `not_analyzed` | not a Python package, the advisory lists no functions, or the package is transitive (your code does not call it directly) |
+
+It **never suppresses an alert or changes the exit code**. `not_called` means *no reference
+found*, not proof: a call through `getattr`, `eval`, a plugin registry or another package's
+wrapper is not seen, and an advisory's function list can be incomplete. Use it to order the
+queue, not to close an alert. Most advisories list no functions, so most alerts will show
+`not_analyzed`. JavaScript and the other ecosystems are not analysed.
 
 ## Review a pull request: `scgraph diff`
 
@@ -418,7 +442,8 @@ for result in scan(".", policy=Policy(min_severity=7.0)):
 - `bun.lockb` (binary) and `pom.xml` are not read, see above.
 - The direct-dependency bump is for npm only.
 - A path shows that the package is installed. It does not show that your code calls
-  the vulnerable function.
+  the vulnerable function. `--reachability` checks that for direct Python dependencies
+  whose advisory names the functions, and for nothing else.
 
 
 ## VEX output

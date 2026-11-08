@@ -110,8 +110,19 @@ def _scan(a: argparse.Namespace) -> int:
         for r in results:
             root = Path(r.path).resolve().parent
             seen = scanned.setdefault(root, source_imports.scan_sources(root))
-            for f in r.alerts:
-                f.imported = source_imports.classify(f.ecosystem, f.path, seen)
+            for finding in r.alerts:
+                finding.imported = source_imports.classify(finding.ecosystem, finding.path, seen)
+    if a.reachability:
+        from .scan import reachability
+
+        called: dict[Path, set[str]] = {}
+        for r in results:
+            root = Path(r.path).resolve().parent
+            names = called.setdefault(root, reachability.scan_python(root))
+            for finding in r.alerts:
+                finding.reachability = reachability.classify(
+                    finding.ecosystem, finding.path, finding.symbols, names
+                )
     fmt = {
         "text": lambda: render.to_text(results, verbose=a.verbose),
         "json": lambda: render.to_json(results),
@@ -364,6 +375,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--imports",
         action="store_true",
         help="hint whether project source imports each alert's dependency (never suppresses)",
+    )
+    s.add_argument(
+        "--reachability",
+        action="store_true",
+        help="mark Python alerts whose advisory names functions your source references",
     )
     s.add_argument("-v", "--verbose", action="store_true", help="list every abstention")
     s.set_defaults(fn=_scan)
