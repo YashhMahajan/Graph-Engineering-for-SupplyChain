@@ -338,7 +338,7 @@ def to_markdown(results: list[ScanResult]) -> str:
     for r in results:
         ab = r.abstention_counts()
         out.append(
-            f"### `{r.path}` · {r.n_packages} packages · {len(r.alerts)} alerts · "
+            f"### `{md_safe(r.path)}` · {r.n_packages} packages · {len(r.alerts)} alerts · "
             f"{sum(ab.values())} abstained"
         )
         if not r.alerts:
@@ -347,12 +347,14 @@ def to_markdown(results: list[ScanResult]) -> str:
         out += ["", "| | advisory | package | signals | fix |", "|---|---|---|---|---|"]
         for f in r.alerts:
             out.append(
-                f"| **{f.priority}** | [{f.id}](https://osv.dev/vulnerability/{f.ids[0]}) | "
-                f"`{f.package}@{f.version}` | {_signal_bits(f)} | {f.fix} |"
+                f"| **{f.priority}** | "
+                f"[{md_safe(f.id)}](https://osv.dev/vulnerability/{md_safe(f.ids[0])}) | "
+                f"`{md_safe(f.package)}@{md_safe(f.version)}` | {md_safe(_signal_bits(f))} | "
+                f"`{md_safe(f.fix)}` |"
             )
         out += ["", "<details><summary>dependency paths (the evidence)</summary>", "", "```"]
         for f in r.alerts:
-            out.append(f"{f.id}: " + " -> ".join(f.path or []))
+            out.append(f"{md_safe(f.id)}: " + " -> ".join(md_safe(h) for h in f.path or []))
         out += ["```", "</details>", ""]
         if ab:
             out.append("Abstained: " + ", ".join(f"{k} {v}" for k, v in sorted(ab.items())) + ".")
