@@ -118,9 +118,8 @@ def articulation_points_and_bridges(indptr, indices, n=None, max_nodes=6_000_000
                     stack[sp] = w
                     if v == s:
                         root_children += 1
-                elif w != parent[v]:
-                    if disc[w] < low[v]:
-                        low[v] = disc[w]
+                elif w != parent[v] and disc[w] < low[v]:
+                    low[v] = disc[w]
             else:
                 sp -= 1
                 if sp >= 0:
