@@ -10,13 +10,17 @@ from __future__ import annotations
 import json
 import os
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
+from urllib.parse import quote
+from uuid import NAMESPACE_URL, uuid5
 
 from .. import __version__
 from ..versions import compare
 from .engine import Finding, ScanResult
+from .lockfiles import lockfile_project
 
-__all__ = ["portfolio_summary", "to_json", "to_markdown", "to_sarif", "to_text"]
+__all__ = ["portfolio_summary", "to_json", "to_markdown", "to_openvex", "to_sarif", "to_text"]
 
 _COLOR = {
     "P0": "1;97;41",
@@ -332,3 +336,62 @@ def to_markdown(results: list[ScanResult]) -> str:
             out.append("Abstained: " + ", ".join(f"{k} {v}" for k, v in sorted(ab.items())) + ".")
             out.append("")
     return "\n".join(out)
+
+
+# OpenVEX 0.2.0. Only abstentions that make a claim about exploitability become
+# ``not_affected``; the severity floor and ignore entries are policy, not exploitability,
+# and a withdrawn advisory is not a vulnerability at all, so those three emit nothing.
+_VEX_CONTEXT = "https://openvex.dev/ns/v0.2.0"
+_VEX_NOT_AFFECTED = {
+    "path": (
+        "component_not_present",
+        "No dependency path from the project's declared roots reaches this package in the "
+        "lockfile graph.",
+    ),
+    "scope": (
+        "vulnerable_code_not_in_execute_path",
+        "Reachable only through dev dependencies, so it is not part of the production "
+        "dependency graph. Inferred from the lockfile, not from a call graph.",
+    ),
+}
+
+
+def to_openvex(results: list[ScanResult], author: str = "scgraph") -> str:
+    """An OpenVEX document: alerts are ``affected`` with the path as the action statement,
+    graph-proven abstentions are ``not_affected`` with a justification."""
+    statements: list[dict] = []
+    for r in results:
+        product = {"@id": f"pkg:generic/{quote(lockfile_project(r.path), safe='')}"}
+        for f in r.findings:
+            if f.alert:
+                stmt = {
+                    "status": "affected",
+                    "action_statement": f"{f.fix}. Path: {' -> '.join(f.path or [])}",
+                }
+            elif f.reason in _VEX_NOT_AFFECTED:
+                just, why = _VEX_NOT_AFFECTED[f.reason]
+                stmt = {"status": "not_affected", "justification": just, "impact_statement": why}
+            else:
+                continue
+            statements.append(
+                {
+                    "vulnerability": {
+                        "name": f.id,
+                        "aliases": sorted(set(f.ids + f.aliases) - {f.id}),
+                    },
+                    "products": [{**product, "subcomponents": [{"@id": f.purl}]}],
+                    **stmt,
+                }
+            )
+    body = json.dumps(statements, sort_keys=True)
+    doc = {
+        "@context": _VEX_CONTEXT,
+        "@id": f"https://openvex.dev/docs/scgraph/{uuid5(NAMESPACE_URL, body)}",
+        "author": author,
+        "role": "Automated scanner",
+        "timestamp": datetime.now(UTC).isoformat(timespec="seconds"),
+        "version": 1,
+        "tooling": f"scgraph {__version__}",
+        "statements": statements,
+    }
+    return json.dumps(doc, indent=2)
