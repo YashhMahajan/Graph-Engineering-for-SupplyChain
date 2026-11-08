@@ -6,6 +6,8 @@
     scgraph diff --base origin/main                   only what this change introduced
     scgraph check npm left-pad@1.3.0                  pre-install guard
     scgraph audit                                     audit agent and IDE config (.mcp.json, hooks)
+    scgraph scan . --history .scgraph-history         record the scan
+    scgraph history .scgraph-history --advisory CVE-X when were we first exposed?
     scgraph hook claude-code                          PreToolUse hook (reads the event on stdin)
     scgraph mcp                                       MCP server over stdio
     scgraph fetch-osv --dir osv npm pypi              OSV dumps for --offline
@@ -77,6 +79,10 @@ def _scan_context(a: argparse.Namespace):
 def _scan(a: argparse.Namespace) -> int:
     from .scan import engine, lockfiles, render
 
+    if a.history and a.advisory:
+        # incident mode scans a subset: recording it would "close" every other exposure
+        print("scgraph: --history cannot be combined with --advisory", file=sys.stderr)
+        return 2
     try:
         files = _collect_lockfiles(a.paths)
         policy, src, sig, registry = _scan_context(a)
@@ -112,6 +118,15 @@ def _scan(a: argparse.Namespace) -> int:
     if summary:
         with Path(summary).open("a", encoding="utf-8") as fh:
             fh.write(render.to_markdown(results) + "\n")
+    if a.history:
+        from .scan import history
+
+        c = history.record_scan(history.open_history(a.history), results)
+        print(
+            f"scgraph: recorded in {a.history}: {c['opened']} exposure(s) opened, "
+            f"{c['closed']} closed",
+            file=sys.stderr,
+        )
     level = FAIL_LEVELS[a.fail_on]
     worst = [int(f.priority[1]) for r in results for f in r.alerts]
     return 1 if level >= 0 and any(w <= level for w in worst) else 0
@@ -147,6 +162,52 @@ def _diff(a: argparse.Namespace) -> int:
     level = FAIL_LEVELS[a.fail_on]
     worst = [int(f.priority[1]) for d in deltas for f in d.new_alerts]  # new alerts only
     return 1 if level >= 0 and any(w <= level for w in worst) else 0
+
+
+def _history(a: argparse.Namespace) -> int:
+    from .scan import history
+
+    if not (Path(a.dir) / "base").is_dir():
+        print(
+            f"scgraph: {a.dir} is not a scan history (record one with scan --history)",
+            file=sys.stderr,
+        )
+        return 2
+    ledger = history.open_history(a.dir)
+    if a.verify:
+        print(
+            f"scgraph: history verified, {history.verify(ledger)} recorded change(s), chain intact"
+        )
+        return 0
+    if a.check:
+        from .core.ledger import Receipt
+
+        ok = history.check_receipt(
+            ledger, Receipt.from_json(Path(a.check).read_text(encoding="utf-8"))
+        )
+        print("receipt verified" if ok else "receipt does NOT match this history")
+        return 0 if ok else 1
+    eps, receipt = history.episodes(ledger, a.advisory)
+    if a.receipt:
+        Path(a.receipt).write_text(receipt.to_json(), encoding="utf-8")
+    if a.json:
+        print(
+            json.dumps({"advisory": a.advisory, "episodes": [e.to_dict() for e in eps]}, indent=2)
+        )
+    else:
+        print(f"{a.advisory}: {len(eps)} exposure episode(s)")
+        for e in eps:
+            end = (
+                f"-> {e.exposed_until} (no longer an alert)"
+                if e.exposed_until
+                else "-> still exposed"
+            )
+            print(f"  {e.lockfile}  {e.exposed_from} {end}")
+        print(
+            "  (a window starts at the first recorded scan that alerted, "
+            "not when the code became vulnerable)"
+        )
+    return 1 if any(e.exposed_until is None for e in eps) else 0
 
 
 def _audit(a: argparse.Namespace) -> int:
@@ -281,6 +342,11 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument(
         "--github-summary", action="store_true", help="append Markdown to $GITHUB_STEP_SUMMARY"
     )
+    s.add_argument(
+        "--history",
+        metavar="DIR",
+        help="record this scan in a ledger at DIR (see: scgraph history)",
+    )
     s.add_argument("-v", "--verbose", action="store_true", help="list every abstention")
     s.set_defaults(fn=_scan)
 
@@ -291,6 +357,18 @@ def build_parser() -> argparse.ArgumentParser:
     d.add_argument("-o", "--output", help="write the report here instead of stdout")
     _add_shared_scan_options(d)
     d.set_defaults(fn=_diff)
+
+    hi = sub.add_parser(
+        "history", help="when were we first exposed? (reads a scan --history ledger)"
+    )
+    hi.add_argument("dir", help="the ledger directory given to scan --history")
+    how = hi.add_mutually_exclusive_group(required=True)
+    how.add_argument("--advisory", metavar="ID", help="exposure episodes for this advisory id")
+    how.add_argument("--verify", action="store_true", help="check the hash chain is intact")
+    how.add_argument("--check", metavar="FILE", help="verify a receipt written by --receipt")
+    hi.add_argument("--receipt", metavar="FILE", help="write a verifiable receipt for the answer")
+    hi.add_argument("--json", action="store_true")
+    hi.set_defaults(fn=_history)
 
     u = sub.add_parser(
         "audit",
