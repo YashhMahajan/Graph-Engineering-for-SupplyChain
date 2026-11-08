@@ -221,13 +221,13 @@ def test_bun_workspace_members_and_non_registry_packages_are_never_reported(tmp_
 
 
 def test_jsonc_keeps_comment_markers_inside_strings_and_drops_trailing_commas() -> None:
-    from scgraph.scan.formats import _loads_jsonc
+    from scgraph.scan.formats import loads_jsonc
 
-    doc = _loads_jsonc(
+    doc = loads_jsonc(
         '{ "url": "https://example.com/a//b", /* block */ "n": [1, 2,], // line\n "s": "a,}",}'
     )
     assert doc == {"url": "https://example.com/a//b", "n": [1, 2], "s": "a,}"}
-    assert _loads_jsonc('{"q": "say \\"hi\\" // not a comment",}') == {
+    assert loads_jsonc('{"q": "say \\"hi\\" // not a comment",}') == {
         "q": 'say "hi" // not a comment'
     }
 

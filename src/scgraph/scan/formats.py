@@ -15,7 +15,7 @@ from pathlib import Path
 from .lockfiles import DepGraph, pep503
 from .vex import VexError, purl_key
 
-__all__ = ["PARSERS"]
+__all__ = ["PARSERS", "loads_jsonc"]
 
 PARSERS: dict[str, Callable[[Path, str], DepGraph]] = {}
 
@@ -175,7 +175,7 @@ def _parse_pnpm(path: Path, text: str) -> DepGraph:
 
 
 # ------------------------------------------------------------------------------ bun
-def _loads_jsonc(text: str):
+def loads_jsonc(text: str):
     """JSON with ``//`` and ``/* */`` comments and trailing commas, as Bun writes it."""
     out: list[str] = []
     i, n, in_str = 0, len(text), False
@@ -226,7 +226,7 @@ def _bun_segments(prefix: str) -> list[str]:
 
 @_register("bun.lock")
 def _parse_bun(path: Path, text: str) -> DepGraph:
-    doc = _loads_jsonc(text)
+    doc = loads_jsonc(text)
     g = DepGraph(str(path), "bun.lock", "npm")
     pk = doc.get("packages") or {}
     nodes: dict[str, tuple[int, dict]] = {}  # key -> (package index, metadata)
