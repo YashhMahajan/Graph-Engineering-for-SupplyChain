@@ -7,6 +7,7 @@ Abstentions are shown everywhere in summary form: nothing is hidden, only ranked
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import sys
@@ -356,12 +357,28 @@ _VEX_NOT_AFFECTED = {
 }
 
 
+def _vex_product(path: str) -> str:
+    """The VEX product for one lockfile, made unique per file so two projects that share a
+    directory name (two ``frontend/`` folders) stay distinct. Inside the working directory
+    the qualifier is the relative path. Outside it, a short hash of the resolved path keeps
+    the id unique without publishing the parent directories."""
+    name = quote(lockfile_project(path), safe="")
+    try:
+        rel = os.path.relpath(path).replace(os.sep, "/")
+    except ValueError:  # another drive on Windows: no relative path exists
+        rel = ".."
+    if not rel.startswith(".."):
+        return f"pkg:generic/{name}?lockfile={quote(rel, safe='/')}"
+    digest = hashlib.sha256(str(Path(path).resolve()).encode()).hexdigest()[:10]
+    return f"pkg:generic/{name}?path-sha256={digest}"
+
+
 def to_openvex(results: list[ScanResult], author: str = "scgraph") -> str:
     """An OpenVEX document: alerts are ``affected`` with the path as the action statement,
     graph-proven abstentions are ``not_affected`` with a justification."""
     statements: list[dict] = []
     for r in results:
-        product = {"@id": f"pkg:generic/{quote(lockfile_project(r.path), safe='')}"}
+        product = {"@id": _vex_product(r.path)}
         for f in r.findings:
             if f.alert:
                 stmt = {

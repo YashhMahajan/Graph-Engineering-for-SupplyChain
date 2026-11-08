@@ -285,7 +285,7 @@ def test_openvex_maps_alerts_and_graph_proven_abstentions(lock: Path) -> None:
     assert a["status"] == "affected"
     assert "app -> web@1.0.0 -> parser@1.2.0" in a["action_statement"]
     assert a["vulnerability"]["aliases"] == ["GHSA-aaaa", "PYSEC-dup"]
-    assert a["products"][0]["@id"] == "pkg:generic/app"
+    assert a["products"][0]["@id"].startswith("pkg:generic/app?")
     assert a["products"][0]["subcomponents"][0]["@id"].startswith("pkg:npm/")
     # graph-proven abstentions -> not_affected with a justification
     assert st["GHSA-orph"]["status"] == "not_affected"
@@ -307,13 +307,13 @@ def test_openvex_never_turns_policy_into_a_not_affected_claim(lock: Path) -> Non
 
 
 def test_openvex_product_purl_is_percent_encoded(tmp_path: Path) -> None:
-    lock = tmp_path / "my app?x#y" / "package-lock.json"
+    lock = tmp_path / "my app#x%" / "package-lock.json"  # legal on Windows too
     lock.parent.mkdir()
     lock.write_text(json.dumps({"lockfileVersion": 3, "packages": {"": {}}}), encoding="utf-8")
     res = scan_graph(parse(lock), FakeOSV([]), FakeSignals())
     res.findings.append(_stub_finding())
     doc = json.loads(render.to_openvex([res]))
-    assert doc["statements"][0]["products"][0]["@id"] == "pkg:generic/my%20app%3Fx%23y"
+    assert doc["statements"][0]["products"][0]["@id"].startswith("pkg:generic/my%20app%23x%25?")
 
 
 def _stub_finding():
@@ -392,3 +392,27 @@ def test_vex_can_never_suppress_malware(lock: Path) -> None:
     res = scan_graph(parse(lock), FakeOSV(RECORDS), FakeSignals(), Policy(vex=vex))
     f = by_id(res)["MAL-2025-1"]
     assert f.alert and f.priority == "P0"
+
+
+def test_openvex_products_stay_distinct_for_same_named_directories(tmp_path: Path) -> None:
+    locks = []
+    for repo in ("one", "two"):
+        p = tmp_path / repo / "frontend" / "package-lock.json"
+        p.parent.mkdir(parents=True)
+        p.write_text(
+            json.dumps(
+                {
+                    "lockfileVersion": 3,
+                    "packages": {
+                        "": {"dependencies": {"parser": "1"}},
+                        "node_modules/parser": {"version": "1.2.0"},
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        locks.append(p)
+    results = [scan_graph(parse(p), FakeOSV(RECORDS), FakeSignals()) for p in locks]
+    ids = {s["products"][0]["@id"] for s in json.loads(render.to_openvex(results))["statements"]}
+    assert len(ids) == 2 and all(i.startswith("pkg:generic/frontend?") for i in ids)
+    assert not any(str(tmp_path) in i for i in ids)  # no absolute path is published
