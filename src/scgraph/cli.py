@@ -1,6 +1,6 @@
 """The ``scgraph`` command.
 
-    scgraph scan [PATH ...] [--format text|json|sarif|markdown|openvex] [--fail-on P2]
+    scgraph scan [PATH ...] [--format text|json|sarif|markdown|openvex|html] [--fail-on P2]
     scgraph scan . --advisory CVE-2021-44228          incident mode: are we hit, and where?
     scgraph scan . --vex supplier.vex.json            apply a supplier's VEX statements
     scgraph diff --base origin/main                   only what this change introduced
@@ -109,6 +109,7 @@ def _scan(a: argparse.Namespace) -> int:
         "sarif": lambda: render.to_sarif(results),
         "markdown": lambda: render.to_markdown(results),
         "openvex": lambda: render.to_openvex(results),
+        "html": lambda: render.to_html(results),
     }[a.format]()
     if a.output:
         Path(a.output).write_text(fmt, encoding="utf-8")
@@ -328,7 +329,10 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("scan", help="scan lockfiles; every alert carries its dependency path")
     s.add_argument("paths", nargs="*", help="lockfiles or directories (default: .)")
     s.add_argument(
-        "-f", "--format", choices=["text", "json", "sarif", "markdown", "openvex"], default="text"
+        "-f",
+        "--format",
+        choices=["text", "json", "sarif", "markdown", "openvex", "html"],
+        default="text",
     )
     s.add_argument("-o", "--output", help="write the report here instead of stdout")
     _add_shared_scan_options(s)
