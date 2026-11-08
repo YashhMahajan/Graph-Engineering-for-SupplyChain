@@ -273,3 +273,72 @@ def test_offline_source_matches_dumps_and_builds_an_index(tmp_path: Path) -> Non
     again = scan_graph(parse(lock), OSVOffline(osv), Signals(enabled=False))  # from the index
     assert {f.id for f in again.alerts} == {"CVE-2024-0001", "GHSA-low"}
     assert src.get("MAL-2025-1")["id"] == "MAL-2025-1"
+
+
+def test_openvex_maps_alerts_and_graph_proven_abstentions(lock: Path) -> None:
+    res = scan_graph(parse(lock), FakeOSV(RECORDS), FakeSignals())
+    doc = json.loads(render.to_openvex([res]))
+    assert doc["@context"] == "https://openvex.dev/ns/v0.2.0"
+    st = {s["vulnerability"]["name"]: s for s in doc["statements"]}
+    # alert -> affected, with the dependency path as the action statement
+    a = st["CVE-2024-0001"]
+    assert a["status"] == "affected"
+    assert "app -> web@1.0.0 -> parser@1.2.0" in a["action_statement"]
+    assert a["vulnerability"]["aliases"] == ["GHSA-aaaa", "PYSEC-dup"]
+    assert a["products"][0]["@id"] == "pkg:generic/app"
+    assert a["products"][0]["subcomponents"][0]["@id"].startswith("pkg:npm/")
+    # graph-proven abstentions -> not_affected with a justification
+    assert st["GHSA-orph"]["status"] == "not_affected"
+    assert st["GHSA-orph"]["justification"] == "component_not_present"
+    assert st["GHSA-dev"]["justification"] == "vulnerable_code_not_in_execute_path"
+    # a withdrawn advisory is not a vulnerability: no statement
+    assert "GHSA-gone" not in st
+
+
+def test_openvex_never_turns_policy_into_a_not_affected_claim(lock: Path) -> None:
+    ignores = [Ignore("CVE-2024-0001", "accepted risk")]
+    res = scan_graph(
+        parse(lock), FakeOSV(RECORDS), FakeSignals(), Policy(min_severity=9.0, ignores=ignores)
+    )
+    reasons = {f.id: f.reason for f in res.findings}
+    assert reasons["CVE-2024-0001"] == "ignored" and reasons["GHSA-low"] == "severity"
+    names = {s["vulnerability"]["name"] for s in json.loads(render.to_openvex([res]))["statements"]}
+    assert not names & {"CVE-2024-0001", "GHSA-low"}  # ignored and below-floor stay silent
+
+
+def test_openvex_product_purl_is_percent_encoded(tmp_path: Path) -> None:
+    lock = tmp_path / "my app?x#y" / "package-lock.json"
+    lock.parent.mkdir()
+    lock.write_text(json.dumps({"lockfileVersion": 3, "packages": {"": {}}}), encoding="utf-8")
+    res = scan_graph(parse(lock), FakeOSV([]), FakeSignals())
+    res.findings.append(_stub_finding())
+    doc = json.loads(render.to_openvex([res]))
+    assert doc["statements"][0]["products"][0]["@id"] == "pkg:generic/my%20app%3Fx%23y"
+
+
+def _stub_finding():
+    from scgraph.scan.engine import Finding
+
+    return Finding(
+        id="GHSA-x",
+        ids=["GHSA-x"],
+        aliases=[],
+        summary="",
+        package="p",
+        version="1.0.0",
+        ecosystem="npm",
+        purl="pkg:npm/p@1.0.0",
+        score=None,
+        severity="unknown",
+        malicious=False,
+        withdrawn=False,
+        kev=False,
+        epss=None,
+        epss_percentile=None,
+        path=None,
+        dev_only=False,
+        fixed_in=None,
+        fix="",
+        alert=False,
+        reason="path",
+    )
