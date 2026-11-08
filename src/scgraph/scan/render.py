@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -21,7 +22,15 @@ from ..versions import compare
 from .engine import Finding, ScanResult
 from .lockfiles import lockfile_project
 
-__all__ = ["portfolio_summary", "to_json", "to_markdown", "to_openvex", "to_sarif", "to_text"]
+__all__ = [
+    "md_safe",
+    "portfolio_summary",
+    "to_json",
+    "to_markdown",
+    "to_openvex",
+    "to_sarif",
+    "to_text",
+]
 
 _COLOR = {
     "P0": "1;97;41",
@@ -34,6 +43,18 @@ _COLOR = {
     "b": "1",
 }
 _TAG = {"P0": "MALICIOUS", "P1": "EXPLOITED", "P2": "CRITICAL", "P3": "HIGH", "P4": "ALERT"}
+
+
+_MD_UNSAFE = re.compile(r"[`<>|\r\n\\]")
+
+
+def md_safe(text: object) -> str:
+    """Neutralise text that came from a lockfile before it goes into Markdown.
+
+    A pull-request author controls the lockfile, and a package name is not validated. A
+    backtick, ``<``, ``>``, ``|``, a backslash or a newline could close a code span or fence,
+    inject HTML or break a table row in a comment, so each becomes ``_``."""
+    return _MD_UNSAFE.sub("_", str(text))
 
 
 def _use_color(stream=None) -> bool:
