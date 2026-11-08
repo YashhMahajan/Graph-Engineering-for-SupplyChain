@@ -242,3 +242,14 @@ def test_cli_history_refuses_incident_mode_and_a_missing_ledger(
     assert not (tmp_path / "hist").exists()
     assert main(["history", str(tmp_path / "nope"), "--verify"]) == 2
     assert "not a scan history" in capsys.readouterr().err
+
+
+def test_cli_scan_html_report(tmp_path: Path, capsys) -> None:
+    base = _project(tmp_path)
+    out = tmp_path / "report.html"
+    assert main([*base, "-f", "html", "-o", str(out), "--fail-on", "never"]) == 0
+    page = out.read_text()
+    assert page.startswith("<!doctype html>") and "CVE-2024-0001" in page
+    assert "<script" not in page
+    assert main([*base, "-f", "html"]) == 1  # the exit code still follows --fail-on
+    assert capsys.readouterr().out.startswith("<!doctype html>")
