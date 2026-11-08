@@ -62,7 +62,7 @@ def load_ignores(path: str | FsPath) -> list[Ignore]:
     p = FsPath(path)
     if not p.exists():
         return out
-    for raw in p.read_text(encoding="utf-8").splitlines():
+    for n, raw in enumerate(p.read_text(encoding="utf-8").splitlines(), 1):
         body, _, reason = raw.partition("#")
         parts = body.split()
         if not parts:
@@ -70,7 +70,12 @@ def load_ignores(path: str | FsPath) -> list[Ignore]:
         until = None
         for tok in parts[1:]:
             if tok.startswith("until="):
-                until = date.fromisoformat(tok[6:])
+                try:
+                    until = date.fromisoformat(tok[6:])
+                except ValueError:
+                    raise ValueError(
+                        f"{p}:{n}: bad date {tok[6:]!r} in {tok!r}; use until=YYYY-MM-DD"
+                    ) from None
         out.append(Ignore(parts[0], reason.strip(), until))
     return out
 
