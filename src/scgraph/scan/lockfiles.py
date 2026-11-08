@@ -79,15 +79,18 @@ class DepGraph:
     edges: set[tuple[int, int]] = field(default_factory=set)
     direct: dict[int, str] = field(default_factory=dict)  # pkg index -> "prod" | "dev"
     unpinned: list[str] = field(default_factory=list)  # requirements we cannot pin
-    _ix: dict[tuple[str, str], int] = field(default_factory=dict, repr=False)
+    _ix: dict[tuple[str, ...], int] = field(default_factory=dict, repr=False)
 
-    def add(self, name: str, version: str, **kw) -> int:
-        k = (name, version)
+    def add(self, name: str, version: str, ecosystem: str | None = None, **kw) -> int:
+        """Add a package, or return the index of the one already there. ``ecosystem`` is only
+        for graphs that mix several (an SBOM); the rest take the graph's own."""
+        eco = ecosystem or self.ecosystem
+        k = (name, version) if eco == self.ecosystem else (eco, name, version)
         i = self._ix.get(k)
         if i is None:
             i = len(self.pkgs)
             self._ix[k] = i
-            self.pkgs.append(Pkg(name, version, self.ecosystem, **kw))
+            self.pkgs.append(Pkg(name, version, eco, **kw))
         else:  # a package seen as prod anywhere is not a dev package
             p = self.pkgs[i]
             p.dev_hint = p.dev_hint and kw.get("dev_hint", False)
@@ -681,8 +684,13 @@ def parse(path: str | Path, content: str | None = None) -> DepGraph:
     elif n == "composer.lock":
         g = _parse_composer_lock(p, json.loads(text))
     else:
-        raise ValueError(
-            f"not a supported lockfile: {n} "
-            f"(supported: {', '.join(LOCKFILE_NAMES)}, requirements*.txt)"
-        )
+        from . import formats  # later formats live in their own module
+
+        parser = formats.PARSERS.get(n)
+        if parser is None:
+            raise ValueError(
+                f"not a supported lockfile: {n} "
+                f"(supported: {', '.join(LOCKFILE_NAMES)}, requirements*.txt)"
+            )
+        g = parser(p, text)
     return g.finalize()
