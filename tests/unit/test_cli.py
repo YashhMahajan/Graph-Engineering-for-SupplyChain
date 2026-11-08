@@ -139,3 +139,30 @@ def test_cli_openvex_output_is_valid_input_for_vex(tmp_path: Path, capsys) -> No
     main([*base, "-f", "openvex", "--fail-on", "never"])
     stmts = parse_vex(json.loads(capsys.readouterr().out))
     assert stmts and all(s.status == "affected" for s in stmts)  # both advisories alert
+
+
+def test_cli_audit_exit_codes_output_and_errors(tmp_path: Path, capsys) -> None:
+    (tmp_path / ".mcp.json").write_text(
+        json.dumps({"mcpServers": {"s": {"command": "node", "args": ["server.js"]}}})
+    )
+    assert main(["audit", str(tmp_path), "--offline-check"]) == 0  # only info: starts, not risky
+    out = capsys.readouterr().out
+    assert "1 command(s) run automatically, 0 finding(s)" in out and "-v lists" in out
+    main(["audit", str(tmp_path), "--offline-check", "-v"])
+    assert "INFO  .mcp.json mcpServers.s: [runs_automatically]" in capsys.readouterr().out
+
+    (tmp_path / ".mcp.json").write_text(
+        json.dumps({"mcpServers": {"s": {"command": "npx", "args": ["-y", "some-server"]}}})
+    )
+    assert main(["audit", str(tmp_path), "--offline-check"]) == 1  # unpinned launcher: warn
+    assert "WARN  .mcp.json mcpServers.s: [unpinned_package]" in capsys.readouterr().out
+    assert main(["audit", str(tmp_path), "--offline-check", "--json"]) == 1
+    assert json.loads(capsys.readouterr().out)["worst"] == "warn"
+
+    assert main(["audit", str(tmp_path / "missing")]) == 2
+    assert "no such file or directory" in capsys.readouterr().err
+
+
+def test_cli_audit_of_a_clean_directory_is_quiet_and_exits_0(tmp_path: Path, capsys) -> None:
+    assert main(["audit", str(tmp_path), "--offline-check"]) == 0
+    assert "0 command(s) run automatically, 0 finding(s)" in capsys.readouterr().out
