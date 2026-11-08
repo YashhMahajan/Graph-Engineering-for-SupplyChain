@@ -11,6 +11,16 @@ This file records all important changes to this project. The format follows
 - `scgraph scan --format openvex`: an OpenVEX 0.2.0 document. Alerts are `affected` with
   the path in the action statement; `path` and `scope` abstentions are `not_affected`
   with a justification. Severity-floor, ignored and withdrawn findings emit nothing.
+  Each product is unique per lockfile, so same-named folders do not collide.
+- `scgraph scan --vex FILE` (repeatable): `not_affected` and `fixed` statements from an
+  OpenVEX file suppress matching findings as a `vex` abstention. The newest statement
+  wins, malware is never suppressed, and malformed files exit 2.
+
+### Fixed
+
+- Two unclosed file handles (`parse.py`, `acquire.py`). The one in `parse.py` made the
+  smoke-pipeline test fail intermittently, because the test config turns a
+  `ResourceWarning` into an error.
 
 ## [1.2.1] - 2026-11-03
 
