@@ -71,3 +71,71 @@ def test_cli_scan_exit_codes_and_formats(tmp_path: Path, monkeypatch, capsys) ->
     assert summ.read_text().startswith("## scgraph")
     assert main([*base, "--advisory", "GHSA-nothing"]) == 0
     assert main(["scan", str(tmp_path / "missing")]) == 2
+
+
+def _project(tmp_path: Path) -> list[str]:
+    osv = tmp_path / "osv"
+    osv.mkdir()
+    with zipfile.ZipFile(osv / "npm.zip", "w") as z:
+        for r in RECORDS:
+            z.writestr(f"{r['id']}.json", json.dumps(r))
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    (proj / "package-lock.json").write_text(
+        json.dumps(
+            {
+                "lockfileVersion": 3,
+                "packages": {
+                    "": {"dependencies": {"parser": "1"}},
+                    "node_modules/parser": {"version": "1.2.0"},
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    return ["scan", str(proj), "--offline", str(osv), "--no-signals", "--no-registry"]
+
+
+def _vex_file(path: Path, *vulns: str) -> Path:
+    stmts = [
+        {
+            "vulnerability": {"name": v},
+            "products": [{"@id": "pkg:npm/parser@1.2.0"}],
+            "status": "not_affected",
+            "justification": "vulnerable_code_not_in_execute_path",
+        }
+        for v in vulns
+    ]
+    path.write_text(
+        json.dumps({"@context": "https://openvex.dev/ns/v0.2.0", "statements": stmts}),
+        encoding="utf-8",
+    )
+    return path
+
+
+def test_cli_vex_suppresses_and_reports_the_reason(tmp_path: Path, capsys) -> None:
+    base = _project(tmp_path)
+    assert main(base) == 1
+    capsys.readouterr()
+    vex = _vex_file(tmp_path / "s.vex.json", "CVE-2024-0001", "GHSA-low")
+    assert main([*base, "--vex", str(vex), "-f", "json"]) == 0
+    summary = json.loads(capsys.readouterr().out)["results"][0]["summary"]
+    assert summary["alerts"] == 0 and summary["abstained"] == {"vex": 2}
+
+
+def test_cli_rejects_a_malformed_vex_file(tmp_path: Path, capsys) -> None:
+    base = _project(tmp_path)
+    bad = tmp_path / "bad.json"
+    bad.write_text('{"@context": "https://openvex.dev/ns/v0.2.0", "statements": [{}]}')
+    assert main([*base, "--vex", str(bad)]) == 2  # never scan without the file you asked for
+    assert "scgraph:" in capsys.readouterr().err
+    assert main([*base, "--vex", str(tmp_path / "missing.json")]) == 2
+
+
+def test_cli_openvex_output_is_valid_input_for_vex(tmp_path: Path, capsys) -> None:
+    from scgraph.scan.vex import parse_vex
+
+    base = _project(tmp_path)
+    main([*base, "-f", "openvex", "--fail-on", "never"])
+    stmts = parse_vex(json.loads(capsys.readouterr().out))
+    assert stmts and all(s.status == "affected" for s in stmts)  # both advisories alert
