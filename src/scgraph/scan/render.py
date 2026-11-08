@@ -8,6 +8,7 @@ Abstentions are shown everywhere in summary form: nothing is hidden, only ranked
 from __future__ import annotations
 
 import hashlib
+import html
 import json
 import os
 import re
@@ -25,6 +26,7 @@ from .lockfiles import lockfile_project
 __all__ = [
     "md_safe",
     "portfolio_summary",
+    "to_html",
     "to_json",
     "to_markdown",
     "to_openvex",
@@ -435,3 +437,77 @@ def to_openvex(results: list[ScanResult], author: str = "scgraph") -> str:
         "statements": statements,
     }
     return json.dumps(doc, indent=2)
+
+
+# ----------------------------------------------------------------------------- HTML
+_HTML_CSS = """
+:root{--bg:#fff;--fg:#1a1a1a;--mut:#666;--card:#f6f6f7;--line:#ddd;--P0:#b00020;--P1:#c62828;
+--P2:#d84315;--P3:#b26a00;--P4:#00695c;--ok:#2e7d32}
+@media(prefers-color-scheme:dark){:root{--bg:#161618;--fg:#e8e8ea;--mut:#9a9aa0;--card:#202023;
+--line:#3a3a3f;--P0:#ff5c70;--P1:#ff7b72;--P2:#ff9f6e;--P3:#e0a040;--P4:#4db6ac;--ok:#66bb6a}}
+body{margin:0 auto;max-width:60rem;padding:1rem 16px 3rem;background:var(--bg);color:var(--fg);
+font:15px/1.5 system-ui,sans-serif}
+h1{font-size:1.4rem}
+h2{font-size:1.1rem;margin-top:2rem;word-break:break-all}
+.mut{color:var(--mut)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:6px;
+padding:.75rem 1rem;margin:.75rem 0}
+.tag{font-weight:700;color:var(--c)}
+code,pre{font:13px ui-monospace,monospace}
+pre{margin:.4rem 0;overflow-x:auto}
+.fix{color:var(--ok)}
+summary{cursor:pointer}
+a{color:inherit}
+"""
+
+
+def _h(x: object) -> str:
+    return html.escape(str(x), quote=True)
+
+
+def to_html(results: list[ScanResult]) -> str:
+    """One self-contained page: no script, no remote resource, every lockfile string escaped.
+
+    A Content-Security-Policy meta forbids scripts and network loads even if an escape were
+    ever missed, so the file is safe to attach to a ticket or open from an email."""
+    n = sum(len(r.alerts) for r in results)
+    out = [
+        "<!doctype html><html lang=en><head><meta charset=utf-8>",
+        '<meta name=viewport content="width=device-width,initial-scale=1">',
+        "<meta http-equiv=Content-Security-Policy "
+        "content=\"default-src 'none'; style-src 'unsafe-inline'\">",
+        f"<title>scgraph report</title><style>{_HTML_CSS}</style></head><body>",
+        f"<h1>scgraph: {n} alert{'s' * (n != 1)} across {len(results)} lockfile(s)</h1>",
+        f"<p class=mut>scgraph {_h(__version__)}. Each alert carries the dependency path "
+        "that proves it. Everything else is an abstention with a reason.</p>",
+    ]
+    for r in results:
+        ab = r.abstention_counts()
+        out.append(
+            f"<h2>{_h(r.path)}</h2><p class=mut>{_h(r.format)} · {r.n_packages} packages · "
+            f"{len(r.alerts)} alerts · {sum(ab.values())} abstained</p>"
+        )
+        if not r.alerts:
+            out.append("<p class=fix>No alert survived the gates.</p>")
+        for f in r.alerts:
+            link = _h(f"https://osv.dev/vulnerability/{quote(f.ids[0], safe='')}")
+            bits = _signal_bits(f)
+            head = (
+                f"<span class=tag>{_h(f.priority)} {_h(_TAG[f.priority])}</span> "
+                f"<a href='{link}'>{_h(f.id)}</a> · "
+                f"<code>{_h(f.package)}@{_h(f.version)}</code>"
+            )
+            if bits:
+                head += f" <span class=mut>{_h(bits)}</span>"
+            path = _h(" \u2192 ".join(f.path or []))
+            out.append(
+                f"<div class=card style='--c:var(--{_h(f.priority)})'>{head}"
+                f"<details open><summary>dependency path</summary><pre>{path}</pre></details>"
+                f"<div class=fix>fix: {_h(f.fix)}</div></div>"
+            )
+        if ab:
+            out.append("<details><summary>abstained</summary><ul>")
+            out += [f"<li>{_h(k)}: {v}</li>" for k, v in sorted(ab.items())]
+            out.append("</ul></details>")
+    out.append("</body></html>")
+    return "\n".join(out)
