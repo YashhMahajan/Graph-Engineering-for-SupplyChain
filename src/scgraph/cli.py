@@ -1,6 +1,6 @@
 """The ``scgraph`` command.
 
-    scgraph scan [PATH ...] [--format text|json|sarif|markdown] [--fail-on P2]
+    scgraph scan [PATH ...] [--format text|json|sarif|markdown|openvex] [--fail-on P2]
     scgraph scan . --advisory CVE-2021-44228          incident mode: are we hit, and where?
     scgraph check npm left-pad@1.3.0                  pre-install guard
     scgraph hook claude-code                          PreToolUse hook (reads the event on stdin)
@@ -73,6 +73,7 @@ def _scan(a: argparse.Namespace) -> int:
         "json": lambda: render.to_json(results),
         "sarif": lambda: render.to_sarif(results),
         "markdown": lambda: render.to_markdown(results),
+        "openvex": lambda: render.to_openvex(results),
     }[a.format]()
     if a.output:
         Path(a.output).write_text(fmt, encoding="utf-8")
@@ -146,7 +147,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     s = sub.add_parser("scan", help="scan lockfiles; every alert carries its dependency path")
     s.add_argument("paths", nargs="*", help="lockfiles or directories (default: .)")
-    s.add_argument("-f", "--format", choices=["text", "json", "sarif", "markdown"], default="text")
+    s.add_argument(
+        "-f", "--format", choices=["text", "json", "sarif", "markdown", "openvex"], default="text"
+    )
     s.add_argument("-o", "--output", help="write the report here instead of stdout")
     s.add_argument(
         "--min-severity", type=float, default=0.0, help="CVSS floor (KEV and malicious always pass)"
