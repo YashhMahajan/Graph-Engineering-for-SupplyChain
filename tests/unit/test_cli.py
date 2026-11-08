@@ -253,3 +253,28 @@ def test_cli_scan_html_report(tmp_path: Path, capsys) -> None:
     assert "<script" not in page
     assert main([*base, "-f", "html"]) == 1  # the exit code still follows --fail-on
     assert capsys.readouterr().out.startswith("<!doctype html>")
+
+
+def test_cli_imports_hint_marks_alerts_but_never_suppresses_them(tmp_path: Path, capsys) -> None:
+    base = _project(tmp_path)
+    proj = tmp_path / "proj"
+    (proj / "index.js").write_text("const p = require('parser');\n", encoding="utf-8")
+    assert main([*base, "--imports", "-f", "json"]) == 1  # still alerts, exit code unchanged
+    doc = json.loads(capsys.readouterr().out)["results"][0]
+    assert doc["summary"]["alerts"] == 2
+    assert {a["imported"] for a in doc["alerts"]} == {"imported"}
+    main([*base, "--imports"])
+    assert "imported" in capsys.readouterr().out
+
+    (proj / "index.js").write_text("const p = require('something-else');\n", encoding="utf-8")
+    assert main([*base, "--imports", "-f", "json"]) == 1  # not imported is a hint, not a pass
+    doc = json.loads(capsys.readouterr().out)["results"][0]
+    assert doc["summary"]["alerts"] == 2
+    assert {a["imported"] for a in doc["alerts"]} == {"not_imported"}
+    main([*base, "--imports"])
+    assert "not imported" in capsys.readouterr().out
+
+    main([*base, "-f", "json"])  # without the flag the field stays empty
+    assert {a["imported"] for a in json.loads(capsys.readouterr().out)["results"][0]["alerts"]} == {
+        ""
+    }

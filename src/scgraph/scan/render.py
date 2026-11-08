@@ -80,6 +80,8 @@ def _signal_bits(f: Finding) -> str:
         bits.append(f"epss {f.epss:.2f}")
     if f.dev_only:
         bits.append("dev")
+    if f.imported in ("imported", "not_imported"):
+        bits.append(f.imported.replace("_", " "))
     return " · ".join(bits)
 
 
@@ -118,6 +120,8 @@ def to_text(results: list[ScanResult], color: bool | None = None, verbose: bool 
             ep = max((f.epss or 0 for f in fs), default=0)
             if ep:
                 meta.append(f"epss {ep:.2f}")
+            if top.imported in ("imported", "not_imported"):
+                meta.append(top.imported.replace("_", " "))
             tag = _c(f" {top.priority} {_TAG[top.priority]} ", top.priority, on)
             lines.append(
                 f"\n {tag} {_c(f'{pkg}@{ver}', 'b', on)}  {_c(' · '.join(meta), 'dim', on)}"

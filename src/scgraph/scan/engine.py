@@ -116,6 +116,7 @@ class Finding:
     reason: str = ""  # "alert", or the gate that abstained
     detail: str = ""
     priority: str = ""
+    imported: str = ""  # import-level hint: imported | not_imported | unknown | "" (not run)
 
     @property
     def depth(self) -> int:

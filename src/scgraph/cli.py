@@ -103,6 +103,15 @@ def _scan(a: argparse.Namespace) -> int:
                 f"scgraph: advisory lookup failed for {f}: {type(e).__name__}: {e}", file=sys.stderr
             )
             return 2
+    if a.imports:
+        from .scan import imports as source_imports
+
+        scanned: dict[Path, source_imports.Imports] = {}
+        for r in results:
+            root = Path(r.path).resolve().parent
+            seen = scanned.setdefault(root, source_imports.scan_sources(root))
+            for f in r.alerts:
+                f.imported = source_imports.classify(f.ecosystem, f.path, seen)
     fmt = {
         "text": lambda: render.to_text(results, verbose=a.verbose),
         "json": lambda: render.to_json(results),
@@ -350,6 +359,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--history",
         metavar="DIR",
         help="record this scan in a ledger at DIR (see: scgraph history)",
+    )
+    s.add_argument(
+        "--imports",
+        action="store_true",
+        help="hint whether project source imports each alert's dependency (never suppresses)",
     )
     s.add_argument("-v", "--verbose", action="store_true", help="list every abstention")
     s.set_defaults(fn=_scan)
