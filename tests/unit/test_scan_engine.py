@@ -342,3 +342,53 @@ def _stub_finding():
         alert=False,
         reason="path",
     )
+
+
+def _vex(*stmts, ts="2026-01-01T00:00:00Z"):
+    from scgraph.scan.vex import VexIndex, parse_vex
+
+    doc = {"@context": "https://openvex.dev/ns/v0.2.0", "timestamp": ts, "statements": list(stmts)}
+    return VexIndex(parse_vex(doc))
+
+
+def _vs(vuln, purl, status="not_affected", **kw):
+    s = {"vulnerability": {"name": vuln}, "products": [{"@id": purl}], "status": status, **kw}
+    if status == "not_affected":
+        s.setdefault("impact_statement", "supplier says the code path is not used")
+    if status == "affected":
+        s.setdefault("action_statement", "upgrade")
+    return s
+
+
+def test_vex_not_affected_turns_an_alert_into_a_named_abstention(lock: Path) -> None:
+    vex = _vex(_vs("CVE-2024-0001", "pkg:npm/parser@1.2.0"))
+    res = scan_graph(parse(lock), FakeOSV(RECORDS), FakeSignals(), Policy(vex=vex))
+    f = by_id(res)["CVE-2024-0001"]
+    assert (f.alert, f.reason) == (False, "vex")
+    assert "VEX" in f.detail
+
+
+def test_vex_matches_on_any_alias_of_the_merged_finding(lock: Path) -> None:
+    vex = _vex(_vs("GHSA-aaaa", "pkg:npm/parser@1.2.0"))  # the CVE finding merged this id
+    res = scan_graph(parse(lock), FakeOSV(RECORDS), FakeSignals(), Policy(vex=vex))
+    assert by_id(res)["CVE-2024-0001"].reason == "vex"
+
+
+def test_vex_for_another_version_does_not_suppress(lock: Path) -> None:
+    vex = _vex(_vs("CVE-2024-0001", "pkg:npm/parser@9.9.9"))
+    res = scan_graph(parse(lock), FakeOSV(RECORDS), FakeSignals(), Policy(vex=vex))
+    assert by_id(res)["CVE-2024-0001"].alert
+
+
+def test_a_newer_affected_statement_revokes_the_suppression(lock: Path) -> None:
+    old = _vs("CVE-2024-0001", "pkg:npm/parser@1.2.0", timestamp="2026-01-01T00:00:00Z")
+    new = _vs("CVE-2024-0001", "pkg:npm/parser@1.2.0", "affected", timestamp="2026-02-01T00:00:00Z")
+    res = scan_graph(parse(lock), FakeOSV(RECORDS), FakeSignals(), Policy(vex=_vex(old, new)))
+    assert by_id(res)["CVE-2024-0001"].alert
+
+
+def test_vex_can_never_suppress_malware(lock: Path) -> None:
+    vex = _vex(_vs("MAL-2025-1", "pkg:npm/chalk@5.6.1"))
+    res = scan_graph(parse(lock), FakeOSV(RECORDS), FakeSignals(), Policy(vex=vex))
+    f = by_id(res)["MAL-2025-1"]
+    assert f.alert and f.priority == "P0"
