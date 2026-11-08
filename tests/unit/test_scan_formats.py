@@ -162,3 +162,83 @@ def test_pnpm_aliased_dependency_forms_all_resolve_to_the_real_package(
         encoding="utf-8",
     )
     assert edge_labels(parse(f)) == {("web@1.0.0", "left-pad@1.3.0")}
+
+
+BUN = """\
+{
+  // written by bun
+  "lockfileVersion": 1,
+  "workspaces": {
+    "": {
+      "name": "app",
+      "dependencies": {
+        "express": "^4.18.2",
+        "@scope/widget": "^1.0.0",
+      },
+      "devDependencies": {
+        "typescript": "^5.0.0",
+      },
+    },
+  },
+  "packages": {
+    "app": ["app@workspace:."],
+    "express": ["express@4.18.2", "", {
+      "dependencies": { "qs": "6.11.0", "accepts": "~1.3.8" } }, "sha512-a"],
+    "accepts": ["accepts@1.3.8", "", {}, "sha512-b"],
+    "qs": ["qs@6.14.0", "", {}, "sha512-c"],
+    "express/qs": ["qs@6.11.0", "", {}, "sha512-d"],
+    "@scope/widget": ["@scope/widget@1.0.0", "", { "dependencies": { "qs": "^6" } }, "sha512-e"],
+    "typescript": ["typescript@5.4.0", "", {}, "sha512-f"],
+    "tarball-dep": ["tarball-dep@https://example.com/x.tgz", ""],
+  }
+}
+"""
+
+
+def test_bun_lock_resolves_nested_overrides_before_the_hoisted_copy(tmp_path: Path) -> None:
+    f = tmp_path / "bun.lock"
+    f.write_text(BUN, encoding="utf-8")
+    g = parse(f)
+    assert g.format == "bun.lock" and g.ecosystem == "npm"
+    assert edge_labels(g) == {
+        ("express@4.18.2", "qs@6.11.0"),  # express/qs shadows the top-level qs
+        ("express@4.18.2", "accepts@1.3.8"),
+        ("@scope/widget@1.0.0", "qs@6.14.0"),  # no override here: the hoisted copy
+    }
+    assert direct(g) == {
+        "express@4.18.2": "prod",
+        "@scope/widget@1.0.0": "prod",
+        "typescript@5.4.0": "dev",
+    }
+
+
+def test_bun_workspace_members_and_non_registry_packages_are_never_reported(tmp_path: Path) -> None:
+    f = tmp_path / "bun.lock"
+    f.write_text(BUN, encoding="utf-8")
+    g = parse(f)
+    local = {p.label for p in g.pkgs if p.local}
+    assert local == {"app@workspace:.", "tarball-dep@https://example.com/x.tgz"}
+
+
+def test_jsonc_keeps_comment_markers_inside_strings_and_drops_trailing_commas() -> None:
+    from scgraph.scan.formats import _loads_jsonc
+
+    doc = _loads_jsonc(
+        '{ "url": "https://example.com/a//b", /* block */ "n": [1, 2,], // line\n "s": "a,}",}'
+    )
+    assert doc == {"url": "https://example.com/a//b", "n": [1, 2], "s": "a,}"}
+    assert _loads_jsonc('{"q": "say \\"hi\\" // not a comment",}') == {
+        "q": 'say "hi" // not a comment'
+    }
+
+
+def test_bun_scoped_parent_chain_resolves_overrides_inside_scopes(tmp_path: Path) -> None:
+    f = tmp_path / "bun.lock"
+    f.write_text(
+        '{"lockfileVersion":1,"workspaces":{"":{"dependencies":{"@s/p":"1"}}},"packages":{'
+        '"@s/p":["@s/p@1.0.0","",{"dependencies":{"x":"1"}}],'
+        '"x":["x@1.0.0","",{}],'
+        '"@s/p/x":["x@2.0.0","",{}]}}',
+        encoding="utf-8",
+    )
+    assert edge_labels(parse(f)) == {("@s/p@1.0.0", "x@2.0.0")}
