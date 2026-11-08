@@ -12,6 +12,8 @@ asked, in order of how hard they stop an install:
           the package itself is less than 30 days old
           the name is one edit away from a popular package (typosquat)
           npm install scripts, or a PyPI version with no wheel (setup.py runs)
+          npm release anomalies: a new publisher or maintainer, dropped provenance, a newly
+          added install script, a late backport, a publish burst (see ``anomaly``)
           deprecated or yanked
           known vulnerabilities at this version
   allow   none of the above
@@ -27,6 +29,7 @@ import urllib.parse
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 
+from .anomaly import npm_release_anomalies
 from .lockfiles import Pkg, pep503
 from .sources import default_osv, http_json
 
@@ -181,7 +184,7 @@ def _age_hours(t: datetime | None, now: datetime) -> float | None:
     return None if t is None else (now - t).total_seconds() / 3600
 
 
-def _registry(eco: str, name: str, version: str | None, fetch) -> dict:
+def _registry(eco: str, name: str, version: str | None, fetch, now: datetime | None = None) -> dict:
     """Facts from the package registry. ``exists`` is True, False or None (unknown)."""
     q = urllib.parse.quote
     if eco == "npm":
@@ -196,7 +199,7 @@ def _registry(eco: str, name: str, version: str | None, fetch) -> dict:
             for k, v in (vdoc.get("scripts") or {}).items()
             if k in ("preinstall", "install", "postinstall")
         }
-        return {
+        facts = {
             "exists": True,
             "version": ver,
             "version_exists": bool(vdoc) if ver else None,
@@ -207,6 +210,12 @@ def _registry(eco: str, name: str, version: str | None, fetch) -> dict:
             "maintainers": len(doc.get("maintainers") or []),
             "versions": len(doc.get("versions") or {}),
         }
+        if ver and vdoc:
+            try:
+                facts["anomalies"] = npm_release_anomalies(doc, ver, now or datetime.now(UTC))
+            except Exception as e:  # a malformed history must not hide the other facts
+                facts["anomaly_error"] = f"{type(e).__name__}: {e}"
+        return facts
     if eco == "PyPI":
         doc = fetch(f"https://pypi.org/pypi/{q(name)}/json")
         if doc is None:
@@ -298,7 +307,7 @@ def check_package(
     c = Check(eco, name, version)
 
     try:
-        reg = _registry(eco, name, version, fetch)
+        reg = _registry(eco, name, version, fetch, now)
     except Exception as e:  # network, proxy, malformed registry answer
         reg = {"exists": None, "error": f"{type(e).__name__}: {e}"}
     c.facts["registry"] = reg
@@ -351,13 +360,24 @@ def check_package(
             "new_package",
             f"the package was first published {created_age / 24:.0f} days ago",
         )
-    if reg.get("install_scripts"):
+    anomalies = reg.get("anomalies") or []
+    if reg.get("anomaly_error"):
+        c.add(
+            "warn", "unverified", f"release history could not be compared ({reg['anomaly_error']})"
+        )
+    # a newly added install script carries the same text and more context, so it replaces
+    # the generic install-script warning instead of repeating it
+    if reg.get("install_scripts") and not any(
+        code == "install_script_added" for code, _ in anomalies
+    ):
         c.add(
             "warn",
             "install_scripts",
             "runs code at install: "
             + ", ".join(f"{k}: {v[:60]}" for k, v in reg["install_scripts"].items()),
         )
+    for code, message in anomalies:
+        c.add("warn", code, message)
     if reg.get("sdist_only"):
         c.add(
             "warn",
