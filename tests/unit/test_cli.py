@@ -166,3 +166,79 @@ def test_cli_audit_exit_codes_output_and_errors(tmp_path: Path, capsys) -> None:
 def test_cli_audit_of_a_clean_directory_is_quiet_and_exits_0(tmp_path: Path, capsys) -> None:
     assert main(["audit", str(tmp_path), "--offline-check"]) == 0
     assert "0 command(s) run automatically, 0 finding(s)" in capsys.readouterr().out
+
+
+def _scan_args(tmp_path: Path, proj: Path, hist: Path) -> list[str]:
+    return [
+        "scan", str(proj), "--offline", str(tmp_path / "osv"), "--no-signals", "--no-registry",
+        "--fail-on", "never", "--history", str(hist),
+    ]  # fmt: skip
+
+
+def _lock_with_parser(proj: Path, version: str) -> None:
+    (proj / "package-lock.json").write_text(
+        json.dumps(
+            {
+                "lockfileVersion": 3,
+                "packages": {
+                    "": {"dependencies": {"parser": "1"}},
+                    "node_modules/parser": {"version": version},
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def test_cli_history_records_scans_and_answers_when_exposure_began(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    base = _project(tmp_path)  # writes osv/ and proj/ with parser@1.2.0 (vulnerable)
+    proj, hist = tmp_path / "proj", tmp_path / "hist"
+    monkeypatch.chdir(tmp_path)
+    args = _scan_args(tmp_path, proj, hist)
+    assert base[0] == "scan" and main(args) == 0
+    assert "3 exposure(s) opened, 0 closed" in capsys.readouterr().err  # 2 advisories, 1 alias
+
+    assert main(["history", str(hist), "--advisory", "CVE-2024-0001"]) == 1  # still exposed
+    out = capsys.readouterr().out
+    assert "1 exposure episode(s)" in out and "proj/package-lock.json" in out
+    assert "still exposed" in out and "not when the code became vulnerable" in out
+
+    _lock_with_parser(proj, "1.3.0")  # fixed
+    main(args)
+    assert "0 exposure(s) opened, 3 closed" in capsys.readouterr().err
+    assert main(["history", str(hist), "--advisory", "CVE-2024-0001"]) == 0  # no longer exposed
+    assert "no longer an alert" in capsys.readouterr().out
+
+
+def test_cli_history_receipt_verify_and_check(tmp_path: Path, monkeypatch, capsys) -> None:
+    _project(tmp_path)
+    proj, hist, receipt = tmp_path / "proj", tmp_path / "hist", tmp_path / "r.json"
+    monkeypatch.chdir(tmp_path)
+    main(_scan_args(tmp_path, proj, hist))
+    capsys.readouterr()
+    main(["history", str(hist), "--advisory", "GHSA-aaaa", "--receipt", str(receipt), "--json"])
+    doc = json.loads(capsys.readouterr().out)
+    assert doc["advisory"] == "GHSA-aaaa" and len(doc["episodes"]) == 1
+    assert main(["history", str(hist), "--check", str(receipt)]) == 0
+    assert "receipt verified" in capsys.readouterr().out
+    assert main(["history", str(hist), "--verify"]) == 0
+    assert "chain intact" in capsys.readouterr().out
+    log = hist / "log.jsonl"
+    log.write_text(log.read_text().replace("lockfile:proj/", "lockfile:xxxx/"))
+    assert main(["history", str(hist), "--verify"]) == 2  # tampering: an error, not a pass
+    assert "scgraph:" in capsys.readouterr().err
+
+
+def test_cli_history_refuses_incident_mode_and_a_missing_ledger(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    _project(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    args = _scan_args(tmp_path, tmp_path / "proj", tmp_path / "hist")
+    assert main([*args, "--advisory", "GHSA-aaaa"]) == 2  # a subset would close other exposures
+    assert "cannot be combined with --advisory" in capsys.readouterr().err
+    assert not (tmp_path / "hist").exists()
+    assert main(["history", str(tmp_path / "nope"), "--verify"]) == 2
+    assert "not a scan history" in capsys.readouterr().err
