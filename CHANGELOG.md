@@ -21,6 +21,16 @@ This file records all important changes to this project. The format follows
   text, JSON and a Markdown comment with a hidden marker for a sticky pull-request comment.
 - GitHub Action `mode: diff`, `base` and `comment` inputs: comments only what a pull
   request introduces and edits one comment authored by `github-actions[bot]`.
+- **Release anomalies in `scgraph check` (npm)**: warnings when a release differs from
+  its predecessor: `publisher_changed`, `maintainer_added`, `provenance_dropped`,
+  `install_script_added`, `backport_published` and `publish_burst`. They use only the
+  registry document the guard already fetches, examine releases from the last 14 days, and
+  also apply to the Claude Code hook and the MCP server.
+
+### Changed
+
+- When a release adds an install script, the guard reports `install_script_added` instead
+  of the generic `install_scripts` warning, so the script is not listed twice.
 
 ### Fixed
 
