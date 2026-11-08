@@ -579,6 +579,7 @@ LOCKFILE_NAMES = (
     "npm-shrinkwrap.json",
     "yarn.lock",
     "pnpm-lock.yaml",
+    "bun.lock",
     "Pipfile.lock",
     "poetry.lock",
     "uv.lock",

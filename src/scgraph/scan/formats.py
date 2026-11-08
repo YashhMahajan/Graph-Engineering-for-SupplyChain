@@ -8,6 +8,7 @@ else: ``scgraph diff`` parses a file from git history through the same entry poi
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from pathlib import Path
 
@@ -167,6 +168,102 @@ def _parse_pnpm(path: Path, text: str) -> DepGraph:
             for dn, dv in ((imp or {}).get(field) or {}).items():
                 version = dv.get("version") if isinstance(dv, dict) else dv
                 j = resolve(dn, version) if isinstance(version, str) else None
+                if j is not None:
+                    g.add_direct(j, scope)
+    return g
+
+
+# ------------------------------------------------------------------------------ bun
+def _loads_jsonc(text: str):
+    """JSON with ``//`` and ``/* */`` comments and trailing commas, as Bun writes it."""
+    out: list[str] = []
+    i, n, in_str = 0, len(text), False
+    while i < n:
+        c = text[i]
+        if in_str:
+            out.append(c)
+            if c == "\\" and i + 1 < n:
+                out.append(text[i + 1])
+                i += 1
+            elif c == '"':
+                in_str = False
+        elif c == '"':
+            in_str = True
+            out.append(c)
+        elif text.startswith("//", i):
+            i = text.find("\n", i)
+            i = n if i < 0 else i - 1
+        elif text.startswith("/*", i):
+            end = text.find("*/", i + 2)
+            i = n if end < 0 else end + 1
+        elif c == ",":
+            j = i + 1
+            while j < n and text[j] in " \t\r\n":
+                j += 1
+            if j >= n or text[j] not in "}]":
+                out.append(c)
+        else:
+            out.append(c)
+        i += 1
+    return json.loads("".join(out))
+
+
+def _bun_segments(prefix: str) -> list[str]:
+    """``a/@s/b/`` -> ``['a', '@s/b']``: package names, where a scope is one name."""
+    parts = [p for p in prefix.split("/") if p]
+    out: list[str] = []
+    k = 0
+    while k < len(parts):
+        if parts[k].startswith("@") and k + 1 < len(parts):
+            out.append(f"{parts[k]}/{parts[k + 1]}")
+            k += 2
+        else:
+            out.append(parts[k])
+            k += 1
+    return out
+
+
+@_register("bun.lock")
+def _parse_bun(path: Path, text: str) -> DepGraph:
+    doc = _loads_jsonc(text)
+    g = DepGraph(str(path), "bun.lock", "npm")
+    pk = doc.get("packages") or {}
+    nodes: dict[str, tuple[int, dict]] = {}  # key -> (package index, metadata)
+    for key, arr in pk.items():
+        if not (isinstance(arr, list) and arr and isinstance(arr[0], str)):
+            continue
+        name, _, ver = arr[0].rpartition("@")
+        if not name:
+            continue
+        meta = arr[2] if len(arr) > 2 and isinstance(arr[2], dict) else {}
+        # workspace members and link/file/git packages are expanded through, never reported
+        nodes[key] = (g.add(name, ver, local=not ver[:1].isdigit()), meta)
+
+    def lookup(owner_key: str, dep: str) -> int | None:
+        """Node-style: the owner's own nested copy first (``express/qs``), then each
+        enclosing key outward, then the hoisted top-level copy."""
+        segs = _bun_segments(owner_key)
+        for upto in range(len(segs), -1, -1):
+            head = "/".join(segs[:upto])
+            hit = nodes.get(f"{head}/{dep}" if head else dep)
+            if hit:
+                return hit[0]
+        return None
+
+    for key, (i, meta) in nodes.items():
+        for field in ("dependencies", "optionalDependencies"):
+            for dep in meta.get(field) or {}:
+                j = lookup(key, dep)
+                if j is not None:
+                    g.edges.add((i, j))
+    for ws in (doc.get("workspaces") or {}).values():
+        for field, scope in (
+            ("dependencies", "prod"),
+            ("optionalDependencies", "prod"),
+            ("devDependencies", "dev"),
+        ):
+            for dep in (ws or {}).get(field) or {}:
+                j = lookup("", dep)
                 if j is not None:
                     g.add_direct(j, scope)
     return g
