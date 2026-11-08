@@ -30,6 +30,11 @@ This file records all important changes to this project. The format follows
   and `buildscript-gradle.lockfile`, CycloneDX JSON (`*.cdx.json`, `bom.json`) and SPDX
   JSON (`*.spdx.json`). An SBOM's ecosystem comes from each purl, so one file can mix
   registries; components with no pinned, supported purl are skipped.
+- **`scgraph audit`**: audit `.mcp.json`, Claude and Gemini settings, Cursor and VS Code MCP
+  config and `.vscode/tasks.json` for code that runs on its own. It flags unpinned `npx` and
+  `uvx` launchers, `runOn: folderOpen` tasks, download-and-execute commands and
+  `enableAllProjectMcpServers`, and sends each launched package through the guard.
+  Unreadable config is a warning, never a pass. Exit codes: 0, 1 warn, 2 block.
 
 ### Changed
 

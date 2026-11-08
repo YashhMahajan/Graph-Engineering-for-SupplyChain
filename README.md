@@ -62,6 +62,9 @@ malicious and three hops deep. A flat list shows the name. scgraph shows the pat
 | **Fixes you can apply** | the smallest safe version. For npm, the one direct-dependency bump that removes the vulnerable child. |
 | **Incident mode** | `scgraph scan ~/src --advisory CVE-X` shows every lockfile that the advisory reaches |
 | **15 input formats** | npm, yarn, pnpm, bun, poetry, uv, requirements, Pipfile, Cargo, Gemfile, composer, go.mod, Gradle, and CycloneDX and SPDX SBOMs |
+| **PR-scoped review** | `scgraph diff --base origin/main` reports only the alerts a change introduces, and the GitHub Action posts one sticky comment |
+| **Supplier VEX** | `--vex` applies a supplier's `not_affected` statements. `--format openvex` writes yours. |
+| **Agent config audit** | `scgraph audit` reads `.mcp.json`, hooks and `tasks.json` for auto-run code and unpinned launchers |
 | **CI and code scanning** | SARIF, Markdown summary, a GitHub Action and a pre-commit hook |
 
 <div align="center"><img src="results/figures/scan_noise.png" alt="From advisory records to fix actions" width="900"></div>
