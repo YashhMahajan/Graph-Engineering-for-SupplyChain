@@ -2,6 +2,7 @@
 
     scgraph scan [PATH ...] [--format text|json|sarif|markdown|openvex] [--fail-on P2]
     scgraph scan . --advisory CVE-2021-44228          incident mode: are we hit, and where?
+    scgraph scan . --vex supplier.vex.json            apply a supplier's VEX statements
     scgraph check npm left-pad@1.3.0                  pre-install guard
     scgraph hook claude-code                          PreToolUse hook (reads the event on stdin)
     scgraph mcp                                       MCP server over stdio
@@ -42,12 +43,22 @@ def _scan(a: argparse.Namespace) -> int:
     if not files:
         print("scgraph: no lockfiles found", file=sys.stderr)
         return 2
+    vex = None
+    if a.vex:
+        from .scan.vex import VexError, load_vex
+
+        try:
+            vex = load_vex(a.vex)
+        except VexError as e:
+            print(f"scgraph: {e}", file=sys.stderr)
+            return 2
     ignore_file = a.ignore_file or (".scgraph-ignore" if Path(".scgraph-ignore").exists() else None)
     policy = engine.Policy(
         min_severity=a.min_severity,
         include_dev=a.include_dev,
         ignores=engine.load_ignores(ignore_file) if ignore_file else [],
         only=set(a.advisory or []),
+        vex=vex,
     )
     src = default_osv(a.offline)
     sig = Signals(enabled=not a.no_signals)
@@ -162,6 +173,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="incident mode: only this advisory (repeatable)",
     )
     s.add_argument("--ignore-file", help="ignore list (default: .scgraph-ignore if present)")
+    s.add_argument(
+        "--vex",
+        action="append",
+        metavar="FILE",
+        help="OpenVEX file whose not_affected/fixed statements suppress findings (repeatable)",
+    )
     s.add_argument(
         "--offline", metavar="DIR", help="match against OSV all.zip dumps in DIR (see fetch-osv)"
     )
