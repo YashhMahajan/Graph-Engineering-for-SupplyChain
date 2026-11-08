@@ -317,6 +317,38 @@ no alert passes even in a repository full of old ones. Rules:
 `diff` takes the same options as `scan`: `--min-severity`, `--include-dev`, `--vex`,
 `--ignore-file`, `--offline`, `--no-signals` and `--no-registry`.
 
+## Audit agent and IDE config: `scgraph audit`
+
+```bash
+scgraph audit                # the project in the current directory
+scgraph audit -v             # also list every command that starts on its own
+scgraph audit --offline-check
+```
+
+Later waves of the Shai-Hulud worm did not need `npm install`. They added files that run
+code when a developer opens the repository or starts a coding agent, such as a
+`runOn: folderOpen` task in `.vscode/tasks.json` or a hook in `.claude/settings.json`.
+Reviewers read source diffs and skip these files, so `scgraph audit` reads them.
+
+It looks at the project's own `.mcp.json`, `.claude/settings.json` and
+`.claude/settings.local.json`, `.cursor/mcp.json`, `.gemini/settings.json`,
+`.vscode/mcp.json` and `.vscode/tasks.json`. It never reads your home directory.
+
+| level | code | meaning |
+|---|---|---|
+| info | `runs_automatically` | a command that starts on its own (shown with `-v`) |
+| warn | `unpinned_package` | an `npx` or `uvx` launcher with no version: a freshly published malicious release would run on the next start |
+| warn | `runs_on_folder_open` | a VS Code task that runs when the folder is opened |
+| warn | `download_and_execute` | `curl ... \| sh`, `bash -c "$(curl ...)"`, `base64 -d \| sh` and similar |
+| warn | `auto_approve_mcp` | `enableAllProjectMcpServers`: a pull request can add an MCP server that starts without a prompt |
+| warn | `unreadable` | the file cannot be parsed or is too large, so it was not audited |
+| warn or block | `package_*` | the pre-install guard's verdict on a package a launcher fetches (malicious, nonexistent, fresh, typosquat, release anomaly) |
+
+Exit codes match `check`: `0` nothing above info, `1` a warning, `2` a block. An unreadable
+file is a warning, never a clean pass. `--offline-check` skips the registry and OSV
+lookups and reports only what the files themselves show. Add `scgraph audit` to CI to
+catch a pull request that introduces an auto-run entry.
+
 ## Python API
 
 ```python
