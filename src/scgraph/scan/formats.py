@@ -12,7 +12,8 @@ import json
 from collections.abc import Callable
 from pathlib import Path
 
-from .lockfiles import DepGraph
+from .lockfiles import DepGraph, pep503
+from .vex import VexError, purl_key
 
 __all__ = ["PARSERS"]
 
@@ -266,4 +267,153 @@ def _parse_bun(path: Path, text: str) -> DepGraph:
                 j = lookup("", dep)
                 if j is not None:
                     g.add_direct(j, scope)
+    return g
+
+
+# --------------------------------------------------------------------------- gradle
+@_register("gradle.lockfile")
+@_register("buildscript-gradle.lockfile")
+def _parse_gradle_lockfile(path: Path, text: str) -> DepGraph:
+    """``group:artifact:version=config,config`` lines. Gradle records no edges, so every
+    package is a direct dependency; one that only test configurations use is dev."""
+    g = DepGraph(str(path), "gradle.lockfile", "Maven")
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or line.startswith("empty="):
+            continue
+        coord, _, configs = line.partition("=")
+        parts = coord.split(":")
+        if len(parts) < 3:
+            continue
+        group, artifact, version = parts[0], parts[1], parts[2]
+        dev = bool(configs) and all(
+            c.strip().lower().startswith("test") for c in configs.split(",")
+        )
+        i = g.add(f"{group}:{artifact}", version, dev_hint=dev)
+        g.add_direct(i, "dev" if dev else "prod")
+    return g
+
+
+# ----------------------------------------------------------------------------- SBOMs
+_PURL_ECO = {
+    "npm": "npm",
+    "pypi": "PyPI",
+    "cargo": "crates.io",
+    "golang": "Go",
+    "gem": "RubyGems",
+    "composer": "Packagist",
+    "maven": "Maven",
+    "nuget": "NuGet",
+    "hex": "Hex",
+    "pub": "Pub",
+}
+
+
+def _purl_package(purl: object) -> tuple[str, str, str] | None:
+    """(OSV ecosystem, name, version) for a pinned purl OSV can match, else None."""
+    if not isinstance(purl, str) or not purl.startswith("pkg:"):
+        return None
+    try:
+        typ, name, ver = purl_key(purl)
+    except VexError:
+        return None
+    eco = _PURL_ECO.get(typ)
+    if not eco or not ver:
+        return None
+    if eco == "Maven":
+        name = name.replace("/", ":", 1)  # group/artifact -> group:artifact
+    elif eco == "PyPI":
+        name = pep503(name)
+    return eco, name, ver
+
+
+def _sbom_graph(path: Path, fmt: str) -> DepGraph:
+    return DepGraph(str(path), fmt, "mixed")  # every package carries its own ecosystem
+
+
+def _flatten_components(components: object) -> list[dict]:
+    out: list[dict] = []
+    for c in components if isinstance(components, list) else []:
+        if isinstance(c, dict):
+            out.append(c)
+            out.extend(_flatten_components(c.get("components")))
+    return out
+
+
+@_register("cdx.json")
+@_register("bom.json")
+def _parse_cyclonedx(path: Path, text: str) -> DepGraph:
+    doc = json.loads(text)
+    if not isinstance(doc, dict) or doc.get("bomFormat") != "CycloneDX":
+        raise ValueError("not a CycloneDX JSON document (missing bomFormat)")
+    g = _sbom_graph(path, "CycloneDX")
+    by_ref: dict[str, int] = {}
+    for c in _flatten_components(doc.get("components")):
+        pkg = _purl_package(c.get("purl"))
+        if not pkg or not isinstance(c.get("bom-ref"), str):
+            continue
+        dev = any(
+            isinstance(p, dict)
+            and p.get("name") == "cdx:npm:package:development"
+            and p.get("value") == "true"
+            for p in c.get("properties") or []
+        )
+        by_ref[c["bom-ref"]] = g.add(pkg[1], pkg[2], ecosystem=pkg[0], dev_hint=dev)
+    root = ((doc.get("metadata") or {}).get("component") or {}).get("bom-ref")
+    for dep in doc.get("dependencies") or []:
+        if not isinstance(dep, dict):
+            continue
+        a = by_ref.get(dep.get("ref", ""))
+        for ref in dep.get("dependsOn") or []:
+            b = by_ref.get(ref)
+            if b is None:
+                continue
+            if dep.get("ref") == root:
+                g.add_direct(b, "dev" if g.pkgs[b].dev_hint else "prod")
+            elif a is not None:
+                g.edges.add((a, b))
+    return g
+
+
+@_register("spdx.json")
+def _parse_spdx(path: Path, text: str) -> DepGraph:
+    doc = json.loads(text)
+    if not isinstance(doc, dict) or not str(doc.get("spdxVersion", "")).startswith("SPDX-"):
+        raise ValueError("not an SPDX JSON document (missing spdxVersion)")
+    g = _sbom_graph(path, "SPDX")
+    by_id: dict[str, int] = {}
+    for p in doc.get("packages") or []:
+        purl = next(
+            (
+                r.get("referenceLocator")
+                for r in p.get("externalRefs") or []
+                if isinstance(r, dict) and r.get("referenceType") == "purl"
+            ),
+            None,
+        )
+        pkg = _purl_package(purl)
+        if pkg and isinstance(p.get("SPDXID"), str):
+            by_id[p["SPDXID"]] = g.add(pkg[1], pkg[2], ecosystem=pkg[0])
+    described = set(doc.get("documentDescribes") or [])
+    for r in doc.get("relationships") or []:
+        if not isinstance(r, dict):
+            continue
+        kind, src, dst = (
+            r.get("relationshipType"),
+            r.get("spdxElementId"),
+            r.get("relatedSpdxElement"),
+        )
+        if kind == "DESCRIBES" and src == doc.get("SPDXID"):
+            described.add(dst)
+        if kind == "DEPENDENCY_OF":  # "A is a dependency of B" is the edge B -> A
+            src, dst, kind = dst, src, "DEPENDS_ON"
+        if kind != "DEPENDS_ON":
+            continue
+        b = by_id.get(dst) if isinstance(dst, str) else None
+        if b is None:
+            continue
+        if src in described and src not in by_id:  # the described product is not a package
+            g.add_direct(b, "prod")
+        elif src in by_id:
+            g.edges.add((by_id[src], b))
     return g
