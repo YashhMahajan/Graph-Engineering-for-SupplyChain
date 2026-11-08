@@ -61,7 +61,7 @@ malicious and three hops deep. A flat list shows the name. scgraph shows the pat
 | **Real priority** | CISA KEV (actively exploited) and FIRST EPSS rank the alerts |
 | **Fixes you can apply** | the smallest safe version. For npm, the one direct-dependency bump that removes the vulnerable child. |
 | **Incident mode** | `scgraph scan ~/src --advisory CVE-X` shows every lockfile that the advisory reaches |
-| **10 lockfile formats** | npm, yarn, poetry, uv, requirements, Pipfile, Cargo, Gemfile, composer, go.mod |
+| **15 input formats** | npm, yarn, pnpm, bun, poetry, uv, requirements, Pipfile, Cargo, Gemfile, composer, go.mod, Gradle, and CycloneDX and SPDX SBOMs |
 | **CI and code scanning** | SARIF, Markdown summary, a GitHub Action and a pre-commit hook |
 
 <div align="center"><img src="results/figures/scan_noise.png" alt="From advisory records to fix actions" width="900"></div>

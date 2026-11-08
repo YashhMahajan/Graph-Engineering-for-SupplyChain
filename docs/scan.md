@@ -22,14 +22,38 @@ does not go into `node_modules`, `.venv`, `vendor`, `target` or hidden directori
 |---|---|---|
 | `package-lock.json`, `npm-shrinkwrap.json` (v1, v2, v3) | npm | yes |
 | `yarn.lock` (classic and Berry) | npm | yes |
+| `pnpm-lock.yaml` (lockfile v6 to v9) | npm | yes |
+| `bun.lock` (the text lockfile) | npm | yes |
 | `poetry.lock`, `uv.lock` | PyPI | yes |
 | `requirements*.txt`, `Pipfile.lock` | PyPI | no (flat) |
 | `Cargo.lock` | crates.io | yes |
 | `Gemfile.lock` | RubyGems | yes |
 | `composer.lock` | Packagist | yes |
 | `go.mod` | Go | no (flat) |
+| `gradle.lockfile`, `buildscript-gradle.lockfile` | Maven | no (flat) |
+| `*.cdx.json`, `bom.json` (CycloneDX JSON) | from each purl | yes |
+| `*.spdx.json` (SPDX JSON) | from each purl | yes |
 
 A prefixed name also works, for example `api.uv.lock` or `web.package-lock.json`.
+
+### SBOMs, pnpm, Bun and Gradle
+
+- **SBOMs** (`app.cdx.json`, `bom.json`, `app.spdx.json`) are scanned like a lockfile, so a
+  container SBOM from `syft` or a build's SBOM works too. The ecosystem comes from each
+  component's **purl**, so one file can mix npm, PyPI, Maven, Cargo and more (the result
+  reports the ecosystem as `mixed`). A component with no purl, an unsupported purl type
+  (for example `deb`) or no version is **skipped**, because OSV cannot match it, and an
+  SBOM that carries no dependency relationships has no paths to show. CycloneDX
+  `cdx:npm:package:development` marks a dev dependency.
+- **`pnpm-lock.yaml`** from pnpm 8 and 9 (lockfile v6 and later). Peer-dependency suffixes
+  are folded into one package, aliased dependencies resolve to the real package, and
+  workspace links are skipped. pnpm 7 and older (lockfile v5) is refused with a message,
+  not read wrongly.
+- **`bun.lock`** is Bun's text lockfile (Bun 1.2 and later). The older binary `bun.lockb`
+  is not read: run `bun install --save-text-lockfile` to create `bun.lock`.
+- **Gradle** `gradle.lockfile` records no edges, so every package is a direct dependency. One
+  that only test configurations use is dev. `pom.xml` is not read: Maven resolves versions
+  at build time, so a pom alone does not say what is installed.
 
 ### What happens
 
@@ -305,9 +329,9 @@ for result in scan(".", policy=Policy(min_severity=7.0)):
 
 ## Limits
 
-- `requirements.txt`, `Pipfile.lock` and `go.mod` have no edges. Each package shows
-  as a direct dependency.
-- `pnpm-lock.yaml` is not supported yet.
+- `requirements.txt`, `Pipfile.lock`, `go.mod` and `gradle.lockfile` have no edges. Each
+  package shows as a direct dependency.
+- `bun.lockb` (binary) and `pom.xml` are not read, see above.
 - The direct-dependency bump is for npm only.
 - A path shows that the package is installed. It does not show that your code calls
   the vulnerable function.
