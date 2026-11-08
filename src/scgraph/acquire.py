@@ -214,7 +214,8 @@ def fetch_depsdev_sample(ecosystems, dest: str, max_packages=3000, seeds=None, s
         system = DEPSDEV_SYS[eco]
         outp = Path(dest) / f"{eco}.jsonl"
         if outp.exists() and outp.stat().st_size > 0:
-            counts[eco] = sum(1 for _ in outp.open())
+            with outp.open() as fh:
+                counts[eco] = sum(1 for _ in fh)
             print(f"[deps.dev] {eco:6} cached: {counts[eco]} version-nodes")
             continue
         seen_pkg: set[str] = set()
