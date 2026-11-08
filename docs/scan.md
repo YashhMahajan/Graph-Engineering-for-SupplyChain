@@ -243,7 +243,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: YashhMahajan/Graph-Engineering-for-SupplyChain@v1.2.1
+      - uses: YashhMahajan/Graph-Engineering-for-SupplyChain@v1.3.0
         with:
           fail-on: P2
 ```
@@ -264,7 +264,7 @@ never check out and run fork code with a write token.
       pull-requests: write   # for the sticky comment
     steps:
       - uses: actions/checkout@v5
-      - uses: YashhMahajan/Graph-Engineering-for-SupplyChain@v1.2.1
+      - uses: YashhMahajan/Graph-Engineering-for-SupplyChain@v1.3.0
         with:
           mode: diff
 ```
@@ -274,7 +274,7 @@ never check out and run fork code with a write token.
 ```yaml
 repos:
   - repo: https://github.com/YashhMahajan/Graph-Engineering-for-SupplyChain
-    rev: v1.2.1
+    rev: v1.3.0
     hooks:
       - id: scgraph-scan
 ```

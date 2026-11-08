@@ -4,7 +4,7 @@ This file records all important changes to this project. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.3.0] - 2026-11-08
 
 ### Added
 
@@ -35,6 +35,16 @@ This file records all important changes to this project. The format follows
   `uvx` launchers, `runOn: folderOpen` tasks, download-and-execute commands and
   `enableAllProjectMcpServers`, and sends each launched package through the guard.
   Unreadable config is a warning, never a pass. Exit codes: 0, 1 warn, 2 block.
+- **Scan history**: `scgraph scan --history DIR` records each scan in the bitemporal
+  ledger, and `scgraph history DIR --advisory ID` answers when exposure began, when it was
+  fixed and whether it regressed, with a verifiable receipt (`--receipt`, `--check`,
+  `--verify`). A window starts at the first recorded scan, not when the code became
+  vulnerable. `--history` refuses `--advisory`, because a subset scan would close exposures.
+- `--format html`: a self-contained report with no script, no remote resource, escaped
+  lockfile text and a strict Content-Security-Policy.
+- `scan --imports`: a hint that marks an alert `imported` or `not imported` by whether the
+  project's source imports the dependency at the top of its path. It never suppresses an
+  alert or changes the exit code, it is not a call graph, and PyPI is only ever `imported`.
 
 ### Changed
 

@@ -74,6 +74,11 @@ On the sample Express app, 61 advisory records become 48 alerts and **4 fix acti
 One `express` bump clears 11 advisories in 6 transitive packages. Numbers:
 [`results/metrics/scan_examples.json`](results/metrics/scan_examples.json).
 
+These are OSV figures from 3 November 2026. OSV changes daily and withdrawn records drop
+out of it, so a fresh scan can differ by an advisory or two. The 4 fix actions and the single
+`express` bump that clears 11 advisories were unchanged when rechecked on 8 November.
+`python scripts/make_scan_figures.py` regenerates all of it.
+
 ### Stop bad packages before they install
 
 About one in five package names that code assistants suggest do not exist. Attackers
