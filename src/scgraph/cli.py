@@ -3,12 +3,14 @@
     scgraph scan [PATH ...] [--format text|json|sarif|markdown|openvex] [--fail-on P2]
     scgraph scan . --advisory CVE-2021-44228          incident mode: are we hit, and where?
     scgraph scan . --vex supplier.vex.json            apply a supplier's VEX statements
+    scgraph diff --base origin/main                   only what this change introduced
     scgraph check npm left-pad@1.3.0                  pre-install guard
     scgraph hook claude-code                          PreToolUse hook (reads the event on stdin)
     scgraph mcp                                       MCP server over stdio
     scgraph fetch-osv --dir osv npm pypi              OSV dumps for --offline
 
 Exit codes. scan: 0 no alert at or above --fail-on, 1 alerts, 2 error.
+diff: the same, counting only the alerts the change introduced.
 check: 0 allow, 1 warn, 2 block.
 """
 
@@ -114,6 +116,38 @@ def _scan(a: argparse.Namespace) -> int:
     return 1 if level >= 0 and any(w <= level for w in worst) else 0
 
 
+def _diff(a: argparse.Namespace) -> int:
+    from .scan import diff, diff_render
+
+    try:
+        files = _collect_lockfiles(a.paths)
+        policy, src, sig, _ = _scan_context(a)
+        commit = diff.resolve_ref(a.base, Path.cwd())
+        deltas = []
+        for f in files:
+            try:
+                deltas.append(diff.diff_lockfile(f, commit, src, sig, policy))
+            except (_CliError, diff.DiffError):
+                raise
+            except Exception as e:  # the advisory source failed: say so, do not guess
+                raise _CliError(f"advisory lookup failed for {f}: {type(e).__name__}: {e}") from e
+    except (_CliError, diff.DiffError) as e:
+        print(f"scgraph: {e}", file=sys.stderr)
+        return 2
+    text = {
+        "text": lambda: diff_render.delta_text(deltas, a.base),
+        "json": lambda: diff_render.delta_json(deltas, a.base),
+        "markdown": lambda: diff_render.delta_markdown(deltas, a.base),
+    }[a.format]()
+    if a.output:
+        Path(a.output).write_text(text, encoding="utf-8")
+    else:
+        sys.stdout.write(text)
+    level = FAIL_LEVELS[a.fail_on]
+    worst = [int(f.priority[1]) for d in deltas for f in d.new_alerts]  # new alerts only
+    return 1 if level >= 0 and any(w <= level for w in worst) else 0
+
+
 def _check(a: argparse.Namespace) -> int:
     from .scan.guard import check_package, normalize_ecosystem, parse_spec
 
@@ -160,33 +194,12 @@ def _fetch_osv(a: argparse.Namespace) -> int:
     return 0
 
 
-def build_parser() -> argparse.ArgumentParser:
-    ap = argparse.ArgumentParser(
-        prog="scgraph",
-        description=(
-            "Software supply-chain exposure as graph paths: "
-            "alert with proof, or abstain with a reason."
-        ),
-    )
-    ap.add_argument("--version", action="version", version=f"scgraph {__version__}")
-    sub = ap.add_subparsers(dest="cmd", required=True)
-
-    s = sub.add_parser("scan", help="scan lockfiles; every alert carries its dependency path")
-    s.add_argument("paths", nargs="*", help="lockfiles or directories (default: .)")
-    s.add_argument(
-        "-f", "--format", choices=["text", "json", "sarif", "markdown", "openvex"], default="text"
-    )
-    s.add_argument("-o", "--output", help="write the report here instead of stdout")
+def _add_shared_scan_options(s: argparse.ArgumentParser) -> None:
+    """Options that scan and diff share: how findings are judged and where advisories come from."""
     s.add_argument(
         "--min-severity", type=float, default=0.0, help="CVSS floor (KEV and malicious always pass)"
     )
     s.add_argument("--include-dev", action="store_true", help="alert on dev-only dependencies too")
-    s.add_argument(
-        "--advisory",
-        action="append",
-        metavar="ID",
-        help="incident mode: only this advisory (repeatable)",
-    )
     s.add_argument("--ignore-file", help="ignore list (default: .scgraph-ignore if present)")
     s.add_argument(
         "--vex",
@@ -209,12 +222,46 @@ def build_parser() -> argparse.ArgumentParser:
         default="any",
         help="exit 1 at this priority or worse",
     )
+
+
+def build_parser() -> argparse.ArgumentParser:
+    ap = argparse.ArgumentParser(
+        prog="scgraph",
+        description=(
+            "Software supply-chain exposure as graph paths: "
+            "alert with proof, or abstain with a reason."
+        ),
+    )
+    ap.add_argument("--version", action="version", version=f"scgraph {__version__}")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+
+    s = sub.add_parser("scan", help="scan lockfiles; every alert carries its dependency path")
+    s.add_argument("paths", nargs="*", help="lockfiles or directories (default: .)")
+    s.add_argument(
+        "-f", "--format", choices=["text", "json", "sarif", "markdown", "openvex"], default="text"
+    )
+    s.add_argument("-o", "--output", help="write the report here instead of stdout")
+    _add_shared_scan_options(s)
+    s.add_argument(
+        "--advisory",
+        action="append",
+        metavar="ID",
+        help="incident mode: only this advisory (repeatable)",
+    )
     s.add_argument("--summary", metavar="FILE", help="also append a Markdown summary to FILE")
     s.add_argument(
         "--github-summary", action="store_true", help="append Markdown to $GITHUB_STEP_SUMMARY"
     )
     s.add_argument("-v", "--verbose", action="store_true", help="list every abstention")
     s.set_defaults(fn=_scan)
+
+    d = sub.add_parser("diff", help="what did this change introduce? (new alerts vs a git ref)")
+    d.add_argument("paths", nargs="*", help="lockfiles or directories (default: .)")
+    d.add_argument("--base", required=True, metavar="REF", help="git ref to compare against")
+    d.add_argument("-f", "--format", choices=["text", "json", "markdown"], default="text")
+    d.add_argument("-o", "--output", help="write the report here instead of stdout")
+    _add_shared_scan_options(d)
+    d.set_defaults(fn=_diff)
 
     c = sub.add_parser("check", help="should this package be installed? (pre-install guard)")
     c.add_argument("ecosystem", help="npm, pypi, cargo, go, gem, composer")
