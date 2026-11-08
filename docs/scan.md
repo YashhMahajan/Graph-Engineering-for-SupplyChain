@@ -179,6 +179,9 @@ The server has no extra dependencies. It has three tools:
 
 ### GitHub Action
 
+Scan everything on a push, and judge a pull request only on what it introduces (see
+[`scgraph diff`](#review-a-pull-request-scgraph-diff)):
+
 ```yaml
 name: dependencies
 on: [push, pull_request]
@@ -197,6 +200,25 @@ jobs:
 
 The action uploads SARIF to code scanning and writes a summary to the job page.
 
+For pull requests, add a second job with `mode: diff`. It compares with the base branch,
+writes the summary and edits one sticky comment. Use `pull_request`, not
+`pull_request_target`: the comment step tolerates the read-only token a fork gets, and
+never check out and run fork code with a write token.
+
+```yaml
+  review:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write   # for the sticky comment
+    steps:
+      - uses: actions/checkout@v5
+      - uses: YashhMahajan/Graph-Engineering-for-SupplyChain@v1.2.1
+        with:
+          mode: diff
+```
+
 ### pre-commit
 
 ```yaml
@@ -209,6 +231,41 @@ repos:
 
 The hook runs only when a lockfile changes. It blocks malicious and exploited
 dependencies (`--fail-on P1`).
+
+## Review a pull request: `scgraph diff`
+
+```bash
+scgraph diff --base origin/main            # text
+scgraph diff --base origin/main -f markdown -o comment.md
+```
+
+A scan of a large repository reports every inherited vulnerability, so a pull request
+that adds nothing still looks red. `scgraph diff` scans each lockfile at `--base` and in
+the working tree and reports **only the difference**:
+
+- **new alerts**, each with the dependency path that brought it in
+- **resolved** alerts the change fixes
+- the package changes behind them (added, removed, version changes)
+- the count of alerts that were already there, so the debt stays visible
+
+The exit code counts new alerts only (`--fail-on`, default `any`), so a change that adds
+no alert passes even in a repository full of old ones. Rules:
+
+- Alerts are compared with alerts. A finding that was abstained at the base and alerts
+  now, for example a dependency moved from `devDependencies` to `dependencies`, is new.
+- A lockfile that does not exist at the base is entirely new. A lockfile the change
+  deletes is not reported.
+- Both sides are read from text the same way, and registry lookups are skipped.
+- The Markdown output starts with a hidden `<!-- scgraph-diff -->` marker, so CI can edit
+  one comment instead of posting a new one on every push. Every lockfile-derived string is
+  neutralised first: the author of a pull request controls the lockfile, and a package
+  name must not be able to close a code span, add a table cell or inject HTML.
+- `--base` must name a commit in the local clone. In CI, fetch it (the Action does).
+  A ref that looks like an option (`-p`) is refused. A lockfile outside the git
+  repository is an error.
+
+`diff` takes the same options as `scan`: `--min-severity`, `--include-dev`, `--vex`,
+`--ignore-file`, `--offline`, `--no-signals` and `--no-registry`.
 
 ## Python API
 
