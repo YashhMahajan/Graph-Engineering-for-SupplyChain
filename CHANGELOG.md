@@ -26,6 +26,10 @@ This file records all important changes to this project. The format follows
   `install_script_added`, `backport_published` and `publish_burst`. They use only the
   registry document the guard already fetches, examine releases from the last 14 days, and
   also apply to the Claude Code hook and the MCP server.
+- **Five more input formats**: `pnpm-lock.yaml` (v6 to v9), `bun.lock`, `gradle.lockfile`
+  and `buildscript-gradle.lockfile`, CycloneDX JSON (`*.cdx.json`, `bom.json`) and SPDX
+  JSON (`*.spdx.json`). An SBOM's ecosystem comes from each purl, so one file can mix
+  registries; components with no pinned, supported purl are skipped.
 
 ### Changed
 
