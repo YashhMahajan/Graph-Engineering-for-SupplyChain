@@ -183,3 +183,71 @@ def test_a_broken_lockfile_at_the_base_is_a_diff_error_not_a_crash(repo: Path, s
     (repo / "package-lock.json").write_text(lock({}, {}), encoding="utf-8")
     with pytest.raises(DiffError, match="cannot parse"):
         run(repo, source)
+
+
+# ---- the command line ----------------------------------------------------------------
+def _cli(repo: Path, source, monkeypatch, *args: str) -> int:
+    from scgraph.cli import main
+
+    monkeypatch.chdir(repo)
+    base = ["diff", "--base", "HEAD", "--offline", str(source.dir), "--no-signals", "--no-registry"]
+    return main([*base, *args])
+
+
+def _add_malicious(repo: Path) -> None:
+    (repo / "package-lock.json").write_text(
+        lock(
+            {"web": "1", "legacy": "1", "chalk": "5"},
+            {
+                "web": {"version": "1.0.0", "dependencies": {"parser": "1"}},
+                "parser": {"version": "1.2.0"},
+                "legacy": {"version": "1.0.0"},
+                "chalk": {"version": "5.6.1"},
+            },
+        ),
+        encoding="utf-8",
+    )
+
+
+def test_cli_diff_exits_1_for_a_new_alert_and_names_it(repo, source, monkeypatch, capsys) -> None:
+    _add_malicious(repo)
+    assert _cli(repo, source, monkeypatch) == 1
+    out = capsys.readouterr().out
+    assert "NEW P0 MALICIOUS" in out and "chalk@5.6.1" in out
+    assert "GHSA-leg" not in out  # inherited debt is not reported
+
+
+def test_cli_diff_exits_0_when_the_change_adds_nothing_even_with_inherited_debt(
+    repo, source, monkeypatch, capsys
+) -> None:
+    # the base already has two vulnerable packages; an unchanged tree adds none
+    assert _cli(repo, source, monkeypatch) == 0
+    assert "0 new alerts · 0 resolved · 2 unchanged" in capsys.readouterr().out
+
+
+def test_cli_diff_fail_on_never_and_json_and_markdown_output(
+    repo, source, monkeypatch, capsys, tmp_path
+) -> None:
+    _add_malicious(repo)
+    assert _cli(repo, source, monkeypatch, "--fail-on", "never", "-f", "json") == 0
+    assert json.loads(capsys.readouterr().out)["summary"]["new_alerts"] == 1
+    out = tmp_path / "comment.md"
+    assert (
+        _cli(repo, source, monkeypatch, "--fail-on", "never", "-f", "markdown", "-o", str(out)) == 0
+    )
+    assert out.read_text().startswith("<!-- scgraph-diff -->")
+
+
+def test_cli_diff_errors_exit_2(repo, source, monkeypatch, capsys) -> None:
+    from scgraph.cli import main
+
+    monkeypatch.chdir(repo)
+    common = ["--offline", str(source.dir), "--no-signals", "--no-registry"]
+    # --base=-p gets past argparse, so it is resolve_ref that refuses an option-like ref
+    for base in ("--base=no-such-ref", "--base=-p", "--base=--output=x"):
+        assert main(["diff", base, *common]) == 2
+        assert "scgraph:" in capsys.readouterr().err
+    assert main(["diff", "--base", "HEAD", "nothing-here", *common]) == 2
+    with pytest.raises(SystemExit) as e:  # argparse itself refuses "-p" as a separate value
+        main(["diff", "--base", "-p", *common])
+    assert e.value.code == 2
