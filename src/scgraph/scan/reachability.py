@@ -6,6 +6,7 @@ project's own source can be searched for a reference to one of them. The result 
 to the alert and **never suppresses it**:
 
   reachable     project source references a listed vulnerable function
+  class_used    a listed function is a method and project source references its class
   not_called    the advisory lists functions and no reference to any was found
   not_analyzed  nothing can be said, and the reason is one of: not a Python package, the
                 advisory lists no functions, or the package is transitive (project code does
@@ -114,10 +115,28 @@ def scan_python(root: Path) -> set[str]:
     return names
 
 
+def _class_of(symbol: str) -> str | None:
+    """``pkg.mod.Session.request`` -> ``pkg.mod.Session`` when the second-to-last segment
+    looks like a class (CapWords); None for a module-level function."""
+    parts = symbol.split(".")
+    if len(parts) >= 3 and parts[-2][:1].isupper():
+        return ".".join(parts[:-1])
+    return None
+
+
 def classify(ecosystem: str, path: list[str] | None, symbols: list[str], names: set[str]) -> str:
-    """``reachable``, ``not_called`` or ``not_analyzed`` for one alert."""
+    """``reachable``, ``class_used``, ``not_called`` or ``not_analyzed`` for one alert.
+
+    A method call through an instance (``s = requests.Session(); s.request()``) is not a
+    dotted name the source spells out, so when a listed symbol is a method and the source
+    references its class, the verdict is ``class_used``, never ``not_called``."""
     if ecosystem != "PyPI" or not symbols:
         return "not_analyzed"
     if not path or len(path) != 2:  # transitive: project code does not call it directly
         return "not_analyzed"
-    return "reachable" if any(s in names for s in symbols) else "not_called"
+    if any(s in names for s in symbols):
+        return "reachable"
+    classes = {c for c in map(_class_of, symbols) if c}
+    if classes & names:
+        return "class_used"
+    return "not_called"

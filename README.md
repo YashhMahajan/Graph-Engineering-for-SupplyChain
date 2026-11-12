@@ -98,6 +98,27 @@ is blocked, and asks you when it gets a warning. If a lookup fails, the result i
 `unverified`, never `allow`. Setup, the GitHub Action and pre-commit:
 [`docs/scan.md`](docs/scan.md). Rules for fair use: [`docs/responsible-use.md`](docs/responsible-use.md).
 
+### Know whether you call the vulnerable function
+
+`govulncheck` can say "your code does not call it" because Go advisories name the vulnerable
+function. PyPI, Maven and Cargo advisories almost never do. **New:** `scgraph.symbols`
+recovers the function at build time from the fix commit (or, with no fix link, by searching
+the affected release), verifies it against released source, adds the public entry points
+that reach it, and ships the result as a data file. `scgraph scan --reachability` reads that
+file offline: **still zero model calls at scan time.**
+
+```bash
+scgraph symbols infer GHSA-j8r2-6x86-q33q   # requests: rebuild_proxies, verified, + entry points
+scgraph scan . --reachability               # "vulnerable function called (inferred)"
+```
+
+An LLM is used only where the model-free ranker is unsure, and only to pick an id from a
+list the code built; it must quote its evidence, and its pick still has to pass the verifier.
+On 188 held-out Go advisories (temporal split), the model-free ranker puts a labelled
+vulnerable symbol first **69.7%** of the time (baseline 58.5%); with the LLM on the uncertain
+ones, **72.3%**. A trained ranker did not beat the hand-set weights, and that is reported too.
+Details, the free-tier LLM client and every limit: [`docs/symbols.md`](docs/symbols.md).
+
 ---
 
 Try the research engine in ten seconds: `pip install -e . && python scripts/demo.py`. It prints one abstention and one exposure path with full provenance.

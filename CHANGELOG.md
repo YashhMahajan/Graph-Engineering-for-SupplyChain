@@ -4,6 +4,30 @@ This file records all important changes to this project. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Vulnerable-symbol inference (`scgraph.symbols`)**: recovers the vulnerable function of
+  advisories that do not name one, at build time, and verifies it against released source.
+  Engine A maps a linked fix commit or pull request to the functions it changes and their
+  callers, and ranks them with model-free features. Engine B searches the affected release
+  (BM25 over identifiers and docstrings plus the diff between the last affected and the first
+  fixed release) when there is no fix link. An LLM chooses among the top candidates only when
+  the ranker is unsure: it answers with an option id, must quote its evidence, and its choice
+  still has to pass the verifier. Entry points (public functions that reach the vulnerable
+  one, with re-export aliases) are added for reachability. See `docs/symbols.md`.
+- `scgraph scan --reachability` uses the inferred-symbol dataset when OSV names no function,
+  with zero model calls, labels the verdict "(inferred)", and records the evidence. A new
+  `class_used` verdict replaces `not_called` when a vulnerable method's class is referenced.
+- `scgraph symbols infer | show | budget`.
+- An OpenRouter client for free tiers: a model waterfall (any failure moves to the next model;
+  a model that refuses the key is skipped for a day), a prompt-hash cache, batched requests,
+  a waits-then-retry policy for per-minute limits and a clean stop at the daily cap.
+- Evaluation on the Go vulnerability database with a temporal split
+  (`results/metrics/symbols_eval.json`, `results/metrics/symbols_entry.json`) and a PyPI build
+  report (`results/metrics/symbols_pypi_build.json`). `make symbols-eval`.
+
 ## [1.3.0] - 2026-11-08
 
 ### Added

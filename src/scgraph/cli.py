@@ -114,12 +114,27 @@ def _scan(a: argparse.Namespace) -> int:
                 finding.imported = source_imports.classify(finding.ecosystem, finding.path, seen)
     if a.reachability:
         from .scan import reachability
+        from .symbols import dataset as symbol_data
 
+        try:
+            inferred = symbol_data.load()  # offline; zero model calls at scan time
+        except symbol_data.DatasetError as e:
+            print(f"scgraph: ignoring the inferred-symbol dataset: {e}", file=sys.stderr)
+            inferred = symbol_data.Index([])
         called: dict[Path, set[str]] = {}
         for r in results:
             root = Path(r.path).resolve().parent
             names = called.setdefault(root, reachability.scan_python(root))
             for finding in r.alerts:
+                if finding.symbols:
+                    finding.symbols_source = "osv"
+                elif finding.ecosystem == "PyPI":
+                    rec = inferred.get(sorted(finding.all_ids()), package=finding.package)
+                    if rec is not None:
+                        finding.symbols = [rec["symbol"], *rec.get("entry_points", [])]
+                        finding.symbols_source = "inferred"
+                        ev = rec.get("evidence") or {}
+                        finding.symbol_evidence = ev.get("fix") or "code search"
                 finding.reachability = reachability.classify(
                     finding.ecosystem, finding.path, finding.symbols, names
                 )
@@ -379,7 +394,8 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument(
         "--reachability",
         action="store_true",
-        help="mark Python alerts whose advisory names functions your source references",
+        help="mark Python alerts whose vulnerable functions your source references (from the "
+        "advisory, else from the inferred-symbol dataset; never suppresses)",
     )
     s.add_argument("-v", "--verbose", action="store_true", help="list every abstention")
     s.set_defaults(fn=_scan)
@@ -438,6 +454,10 @@ def build_parser() -> argparse.ArgumentParser:
     o.add_argument("ecosystems", nargs="+", help="npm pypi cargo go maven rubygems packagist nuget")
     o.add_argument("--dir", default="osv")
     o.set_defaults(fn=_fetch_osv)
+
+    from .symbols.cli import add_parser as add_symbols
+
+    add_symbols(sub)
     return ap
 
 
