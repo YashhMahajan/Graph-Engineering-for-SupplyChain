@@ -1,11 +1,13 @@
 """Inferred symbols as claims in the bitemporal ledger.
 
 A claim is one edge, ``advisory -> symbol``. It is stored under the advisory id and under each
-alias (GHSA, CVE), so a question by any of them finds it. It carries the confidence and a
-source string that names the method, the evidence, the verifier result, and the model and
-prompt hash when a model chose the symbol. The ledger is hash-chained, so a claim cannot change without
-``verify()`` failing. A better inference later replaces a claim with ``retract_edge``. The old
-claim stays visible to any view that was made before the retraction.
+alias (GHSA, CVE), so a question by any of them finds it. The edge carries the confidence. Its
+source string names the method, the evidence and the verifier result. It also names the model
+and the prompt hash when a model chose the symbol.
+
+The ledger is hash-chained, so a claim cannot change without ``verify()`` failing. A better
+inference later replaces a claim with ``retract_edge``. The old claim stays visible to any view
+that was made before the retraction.
 """
 
 from __future__ import annotations
