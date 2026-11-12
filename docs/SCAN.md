@@ -265,7 +265,7 @@ claude mcp add scgraph -- scgraph mcp
 GitHub Action:
 
 ```yaml
-- uses: YashhMahajan/Graph-Engineering-for-SupplyChain@v1.3.0
+- uses: YashhMahajan/Graph-Engineering-for-SupplyChain@v1.4.0
   with:
     fail-on: P2
     reachability: "true"      # optional: check the vulnerable function
@@ -281,7 +281,7 @@ pre-commit:
 ```yaml
 repos:
   - repo: https://github.com/YashhMahajan/Graph-Engineering-for-SupplyChain
-    rev: v1.3.0
+    rev: v1.4.0
     hooks:
       - id: scgraph-scan
 ```
