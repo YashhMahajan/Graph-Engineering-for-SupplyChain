@@ -203,6 +203,32 @@ def _scan(a: argparse.Namespace) -> int:
     return 1 if level >= 0 and any(w <= level for w in worst) else 0
 
 
+def _ask(a: argparse.Namespace) -> int:
+    import contextlib
+    import io
+    import json
+
+    from .scan import ask
+
+    argv = ["scan", *a.paths, "-f", "json", "--reachability", "--fail-on", "never"]
+    if a.deep:
+        argv.append("--deep")
+    for flag, val in (("--offline", a.offline),):
+        if val:
+            argv += [flag, val]
+    argv += [
+        x for x, on in (("--no-signals", a.no_signals), ("--no-registry", a.no_registry)) if on
+    ]
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        code = main(argv)
+    if code not in (0, 1):
+        print("scgraph: the scan failed, so there is nothing to answer from", file=sys.stderr)
+        return 2
+    print(ask.render(ask.answer(a.question, json.loads(buf.getvalue()))))
+    return 0
+
+
 def _diff(a: argparse.Namespace) -> int:
     from .scan import diff, diff_render
 
@@ -440,6 +466,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     s.add_argument("-v", "--verbose", action="store_true", help="list every abstention")
     s.set_defaults(fn=_scan)
+
+    q = sub.add_parser("ask", help="ask a question about your scan; every answer cites its source")
+    q.add_argument("question")
+    q.add_argument("paths", nargs="*", default=["."], help="lockfiles or directories (default: .)")
+    q.add_argument("--offline", metavar="DIR")
+    q.add_argument("--no-signals", action="store_true")
+    q.add_argument("--no-registry", action="store_true")
+    q.add_argument("--deep", action="store_true")
+    q.set_defaults(fn=_ask)
 
     d = sub.add_parser("diff", help="what did this change introduce? (new alerts vs a git ref)")
     d.add_argument("paths", nargs="*", help="lockfiles or directories (default: .)")

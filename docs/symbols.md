@@ -241,6 +241,30 @@ backtracking in the authority parser): `reachable`, 2 hops, evidence
 without a dataset record (three of `urllib3`, the rest of `certifi` and `idna`). All 20
 remain alerts; the verdict orders the queue.
 
+## Trust: ledger, signature, export, questions
+
+```bash
+scgraph symbols ledger DIR                      # record every symbol as a claim in a hash-chained ledger
+scgraph symbols ledger DIR --advisory CVE-X     # the claims for one advisory, with a receipt
+scgraph symbols verify                          # check the Ed25519 signature of the shipped datasets
+scgraph symbols export OUT                      # datasets + signatures + one OSV patch per advisory
+scgraph ask "why am I exposed to CVE-X?" .      # an answer where every sentence cites its source
+```
+
+* **Ledger.** A claim is an edge `advisory -> symbol` with the confidence and a source string
+  (method, evidence, verifier result, model and prompt hash). The ledger is hash-chained, so a
+  claim cannot change without `verify()` failing. A better inference replaces a claim with a
+  retraction; views made earlier still show the old claim.
+* **Signature.** The manifest holds the SHA-256 of the data. An Ed25519 signature covers the
+  manifest, and the public key ships as `signing.pub`. The private key stays on the maintainer's
+  machine (`~/.config/scgraph/signing.key`). Needs `pip install "scgraph-cli[sign]"`.
+* **Export.** Each OSV patch adds `affected[].ecosystem_specific.affected_functions` and keeps the
+  provenance in `database_specific.scgraph`. scgraph sends nothing to anyone. A person who
+  maintains an advisory database can read a patch and decide.
+* **`scgraph ask`.** It scans, selects the findings that the question names, and writes short
+  sentences. Each sentence carries a citation (a path, an advisory, a claim or a fix). No model is
+  used, so no sentence can state a fact that the scan did not find.
+
 ## Limits
 
 * `not called` is "no reference found", never proof. Calls through `getattr`, plugin registries,
