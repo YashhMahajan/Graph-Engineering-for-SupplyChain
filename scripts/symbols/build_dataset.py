@@ -199,19 +199,33 @@ def main() -> int:
     records = []
     reasons: Counter[str] = Counter()
     statuses: Counter[str] = Counter()
-    for p in preps:
+
+    def one(p: Prepared):
+        """Verify one advisory. It can download other affected releases, so it runs in a pool."""
         if p.mode == "none":
-            reasons[p.reason.split(";")[0]] += 1
-            continue
-        rec = finalize(p, choices.get(p.id))
-        if rec is not None and a.search_needs_llm and rec.method == "search":
-            reasons["search: not confirmed by the LLM"] += 1
-            continue
-        if rec is None:
-            reasons[f"{p.mode}: no candidate verified"] += 1
-            continue
-        statuses[rec.verified] += 1
-        records.append(rec.to_dict())
+            return p, "none", None
+        try:
+            return p, "ok", finalize(p, choices.get(p.id))
+        except Exception as e:  # one broken release must not stop the build
+            return p, f"error: {type(e).__name__}", None
+
+    with ThreadPoolExecutor(max_workers=a.workers) as ex:
+        futs = [ex.submit(one, p) for p in preps]
+        for i, fut in enumerate(as_completed(futs), 1):
+            p, state, rec = fut.result()
+            if state == "none":
+                reasons[p.reason.split(";")[0]] += 1
+            elif state != "ok":
+                reasons[state] += 1
+            elif rec is not None and a.search_needs_llm and rec.method == "search":
+                reasons["search: not confirmed by the LLM"] += 1
+            elif rec is None:
+                reasons[f"{p.mode}: no candidate verified"] += 1
+            else:
+                statuses[rec.verified] += 1
+                records.append(rec.to_dict())
+            if i % 50 == 0:
+                print(f"verified {i}/{len(preps)} ({len(records)} records)", flush=True)
 
     if a.merge and out_path.exists():
         from scgraph.symbols.dataset import load

@@ -28,7 +28,7 @@ profile it runs on a laptop in a few minutes and produces the same figures at a 
 scale. Setting `SMOKE_TEST = False` switches to the full corpus, which needs
 `data/parquet/` and `data/graph/` (see [`../data/README.md`](../data/README.md)) and, for
 the model-layer sections, a CUDA GPU. The full-run sequence is in
-[`../docs/reproducing.md`](../docs/reproducing.md).
+[`../docs/ARCHITECTURE.md#reproduce`](../docs/ARCHITECTURE.md#reproduce).
 
 ## Editing it
 

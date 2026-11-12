@@ -4,7 +4,7 @@
     scgraph fetch-osv --dir osv npm pypi
     python scripts/make_scan_figures.py --osv osv
 
-Writes to results/figures/ and docs/figures/:
+Writes to results/figures/:
 
     scan_terminal.png    the real terminal output of one scan
     guard_terminal.png   the real terminal output of the pre-install guard
@@ -22,7 +22,6 @@ import html
 import json
 import os
 import re
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -32,7 +31,6 @@ import matplotlib.pyplot as plt
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "results" / "figures"
-DOCS = ROOT / "docs" / "figures"
 METRICS = ROOT / "results" / "metrics"
 EXAMPLES = ROOT / "examples"
 
@@ -242,7 +240,6 @@ def main() -> None:
     )
     a = ap.parse_args()
     OUT.mkdir(parents=True, exist_ok=True)
-    DOCS.mkdir(parents=True, exist_ok=True)
     METRICS.mkdir(parents=True, exist_ok=True)
     env = {**os.environ, "FORCE_COLOR": "1", "SCGRAPH_OSV_DIR": a.osv, "COLUMNS": "120"}
 
@@ -268,9 +265,6 @@ def main() -> None:
     rows = noise_numbers(a.osv)
     noise_figure(rows, OUT / "scan_noise.png")
     (METRICS / "scan_examples.json").write_text(json.dumps(rows, indent=2) + "\n", encoding="utf-8")
-    for name in ("scan_terminal.png", "guard_terminal.png", "scan_noise.png"):
-        if (OUT / name).exists():
-            shutil.copy(OUT / name, DOCS / name)
     print(json.dumps([{k: r[k] for k in r if k != "parent_bumps"} for r in rows], indent=2))
 
 

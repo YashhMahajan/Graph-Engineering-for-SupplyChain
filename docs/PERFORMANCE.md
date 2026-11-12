@@ -1,7 +1,7 @@
-# Performance and security changes
+# Performance
 
-This page gives the measured results of the change. It also tells you how to measure
-them again. The text follows the ASD-STE100 rules for Simplified Technical English.
+This page gives the measured speed and the security changes. It also tells you how to measure
+again. The text follows the ASD-STE100 rules for Simplified Technical English.
 
 ## How to measure
 
@@ -78,3 +78,19 @@ The specific changes:
 - Python decodes a string from a `StrColumn` more slowly than it reads an item from an
   object array (0.7 µs against 0.4 µs). The audit time does not change, because an
   audit reads few strings.
+
+## Symbols pipeline
+
+The symbols pipeline runs at build time. A scan only reads its data files.
+
+| Measure | Result | How to measure |
+|---|---|---|
+| Scan with `--reachability`, added time | Reads 2 small files. Parsing your source costs more. | `scgraph scan . --reachability` |
+| Call-index build for one release | Once per release. It is cached in memory. | `scripts/symbols/eval_transitive.py` |
+| Transitive evaluation, 12 chains, 3,052 functions | About 30 s per configuration | `eval_transitive.py --ablation` |
+| Model requests per scan | 0 | |
+| Free-tier requests per answered advisory | 4.3 (47 requests, 204 answers) | `scgraph symbols budget` |
+| Repeat build, same advisories | 0 HTTP requests and 0 LLM requests (disk caches) | `build_dataset.py` |
+
+Two caches make a repeat build free. The HTTP cache is `~/.cache/scgraph/http`. The LLM cache
+is `~/.cache/scgraph/llm`. The LLM cache is keyed by advisory, not by batch.

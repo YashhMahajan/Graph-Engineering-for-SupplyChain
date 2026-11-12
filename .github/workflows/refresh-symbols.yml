@@ -1,0 +1,47 @@
+name: refresh symbols
+
+# Once a week, build the symbol datasets again from the newest advisories, without any model
+# (answers already paid for are not in the CI cache, so the model step is skipped). If the data
+# changed, open a pull request. The maintainer signs the data on their own machine, because the
+# private signing key is never in CI: run `scgraph symbols sign` on the pull request branch.
+
+on:
+  schedule:
+    - cron: "17 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[symbols-js,sign]"
+      - name: get the OSV dumps
+        run: scgraph fetch-osv pypi npm --dir data/raw/osv
+      - name: build both datasets (no model)
+        run: |
+          python scripts/symbols/build_dataset.py --ecosystem pypi --popular 5000 --fix 1500 --search 150 --merge
+          python scripts/symbols/build_dataset.py --ecosystem npm --popular 3000 --fix 800 --search 100 --merge
+      - name: open a pull request when the data changed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git diff --quiet -- src/scgraph/symbols/data && { echo "no change"; exit 0; }
+          branch="data/symbols-$(date +%Y%m%d)"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git add src/scgraph/symbols/data results/metrics
+          git commit -m "data: refresh the symbol datasets (not signed yet)"
+          git push origin "$branch"
+          gh pr create --base main --head "$branch" \
+            --title "data: refresh the symbol datasets" \
+            --body "Built without a model. The maintainer must run \`scgraph symbols sign\` on this branch before merge: the signature does not match until then."

@@ -9,7 +9,7 @@ ifeq ($(OS),Windows_NT)
 endif
 
 .DEFAULT_GOAL := help
-.PHONY: help setup lint fmt test test-all cov smoke graph notebook eval symbols-eval plotpack figures build clean
+.PHONY: help setup lint fmt test test-all cov smoke graph notebook eval symbols-eval symbols-refresh plotpack figures build clean
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | \
@@ -57,6 +57,12 @@ notebook: ## Execute the notebook on the smoke profile (overwrites its outputs l
 
 eval: ## Run the evaluation suite (needs data/graph and network)
 	$(BIN)/python scripts/run_evaluation.py --all
+
+symbols-refresh: ## Spend the free-tier LLM budget on what is open, then sign (run after the daily reset)
+	$(BIN)/python scripts/symbols/build_dataset.py --ecosystem npm --popular 3000 --fix 800 --search 100 --llm-requests 20 --search-needs-llm --merge
+	$(BIN)/python scripts/symbols/build_dataset.py --ecosystem pypi --popular 5000 --fix 1500 --search 150 --llm-requests 20 --search-needs-llm --merge
+	$(BIN)/python scripts/symbols/eval_go.py --llm-requests 6 --llm-batch 6
+	$(BIN)/python -m scgraph.cli symbols sign
 
 symbols-eval: ## Vulnerable-symbol inference on the Go database (model-free stages; network once)
 	$(BIN)/python scripts/symbols/go_eval_set.py --prefetch

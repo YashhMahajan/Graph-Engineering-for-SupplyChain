@@ -6,7 +6,7 @@
 This downloads about 25 GB and expands it to about 100 GB of CSV, so run it on a
 machine with the disk for it, not a laptop. The download is resumable, uses aria2c and
 pigz when they are on PATH, and the archive is checked against a pinned md5. See
-docs/reproducing.md for the full sequence.
+docs/ARCHITECTURE.md#reproduce for the full sequence.
 
 If you only want to reproduce the published results, prefer:
 

@@ -7,7 +7,7 @@ Everything here is small and version-controlled so the complete result can be re
 without acquiring any data. The numbers are reproduced by
 [`scripts/run_pipeline.py`](../scripts/run_pipeline.py) plus
 [`scripts/run_evaluation.py`](../scripts/run_evaluation.py); see
-[`docs/reproducing.md`](../docs/reproducing.md).
+[`docs/ARCHITECTURE.md#reproduce`](../docs/ARCHITECTURE.md#reproduce).
 
 ## Layout
 
@@ -45,4 +45,4 @@ without acquiring any data. The numbers are reproduced by
 
 Fresh runs write to `data/out/`, not here, so a re-run never clobbers these reference
 files. To update the reference after inspecting a run, copy the changed files across and
-regenerate `docs/results.md` in the same commit.
+update the numbers in `README.md` and `docs/SYMBOLS.md` in the same commit.

@@ -4,13 +4,12 @@
     python scripts/make_extra_figures.py
 
 Writes dag_levels.png, community_sizes.png, and external_validation.png to
-results/figures/ and docs/figures/. Needs only matplotlib. Uses the notebook style.
+results/figures/. Needs only matplotlib. Uses the notebook style.
 """
 
 from __future__ import annotations
 
 import json
-import shutil
 from pathlib import Path
 
 import matplotlib as mpl
@@ -19,7 +18,6 @@ import matplotlib.pyplot as plt
 ROOT = Path(__file__).resolve().parent.parent
 METRICS = ROOT / "results" / "metrics"
 OUT = ROOT / "results" / "figures"
-DOCS = ROOT / "docs" / "figures"
 
 C1, C2, C3, C4 = "#2a78d6", "#eb6834", "#1baf7a", "#eda100"
 C5, C6, C7, C8 = "#e87ba4", "#008300", "#4a3aa7", "#e34948"
@@ -73,8 +71,6 @@ def finish(fig, name: str, title: str, sub: str | None = None) -> None:
     path = OUT / f"{name}.png"
     fig.savefig(path, bbox_inches="tight")
     plt.close(fig)
-    DOCS.mkdir(parents=True, exist_ok=True)
-    shutil.copy(path, DOCS / path.name)
     print(f"[fig] {name}.png")
 
 

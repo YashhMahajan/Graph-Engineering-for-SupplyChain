@@ -23,7 +23,7 @@ calls are used to build the graph.
 
 **82.8M edges, 8 ecosystems, zero LLM calls to build the graph, zero at scan time.** Every alert carries its dependency path as proof; everything else is an explicit, reasoned abstention. `scgraph scan` brings the same engine to your lockfiles, `scgraph check` guards installs by people and AI agents, and **new:** it now answers *does my code call the vulnerable function?* for Python and npm, which advisories almost never say.
 
-Measured with `make bench` on 2M versions and 8M edges. Details: [`docs/performance.md`](docs/performance.md).
+Measured with `make bench` on 2M versions and 8M edges. Details: [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md).
 
 | Operation | Before | After | Change |
 |---|---|---|---|
@@ -42,7 +42,7 @@ Measured with `make bench` on 2M versions and 8M edges. Details: [`docs/performa
 npm advisories do not (0% name it in the OSV snapshot used here). scgraph now **recovers the
 function from the fix commit and the released source at build time**, verifies it, follows it
 through the dependency path, and ships a data file that a scan reads offline.
-Details and every limit: [`docs/symbols.md`](docs/symbols.md). Numbers: [`results/metrics/`](results/metrics).
+Details and every limit: [`docs/SYMBOLS.md`](docs/SYMBOLS.md). Numbers: [`results/metrics/`](results/metrics).
 
 | Measured on | Before | After |
 |---|---|---|
@@ -125,7 +125,7 @@ claude mcp add scgraph -- scgraph mcp      # tools: check_package, scan_lockfile
 The hook denies `npm install`, `pip install`, `npx`, `uvx` and the like when a package
 is blocked, and asks you when it gets a warning. If a lookup fails, the result is
 `unverified`, never `allow`. Setup, the GitHub Action and pre-commit:
-[`docs/scan.md`](docs/scan.md). Rules for fair use: [`docs/responsible-use.md`](docs/responsible-use.md).
+[`docs/SCAN.md`](docs/SCAN.md). Rules for fair use: [`docs/RESPONSIBLE-USE.md`](docs/RESPONSIBLE-USE.md).
 
 ### Know whether you call the vulnerable function
 
@@ -140,8 +140,8 @@ On a project that pins `requests 2.25.0`, `--deep` follows `app -> requests -> u
 released source and labels each alert, for example
 `vulnerable function called (inferred, 2 hops)`. It never suppresses an alert or changes the
 exit code: `not_called` means *no reference found*, an ordering for the queue, not a pass.
-Dataset, evaluation, ablation and limits: [`docs/symbols.md`](docs/symbols.md); usage:
-[`docs/scan.md`](docs/scan.md); the notebook's Part XI shows it step by step.
+Dataset, evaluation, ablation and limits: [`docs/SYMBOLS.md`](docs/SYMBOLS.md); usage:
+[`docs/SCAN.md`](docs/SCAN.md); the notebook's Part XI shows it step by step.
 
 ---
 
@@ -344,7 +344,7 @@ a path-annotated SBOM to a release.
 
 ## Use the engine on your own graph
 
-The CVE pipeline runs on a domain-agnostic core, [`scgraph.core`](docs/core.md):
+The CVE pipeline runs on a domain-agnostic core, [`scgraph.core`](docs/ARCHITECTURE.md#core-engine):
 
 - typed nodes and named relations
 - per-edge confidence, validity window and source
@@ -354,7 +354,7 @@ The CVE pipeline runs on a domain-agnostic core, [`scgraph.core`](docs/core.md):
   verifiable receipts
 
 Software is one adapter (`scgraph.adapters.software`); writing another means choosing
-node keys, relations and gates. See [`docs/core.md`](docs/core.md).
+node keys, relations and gates. See [`docs/ARCHITECTURE.md#core-engine`](docs/ARCHITECTURE.md#core-engine).
 
 ## Headline results
 
@@ -378,7 +378,7 @@ All reproduced in [`results/run_manifest.json`](results/run_manifest.json) and
 | full-audit latency | p50 0.02 ms, p99 6.8 ms, 2,546 audits per second, single process | `scripts/run_evaluation.py` on the full graph |
 
 Three of these numbers are partly tautological or lexical and are labelled as such in
-[`docs/evaluation.md`](docs/evaluation.md) and notebook section S28. That honesty is
+[`docs/ISSUES.md`](docs/ISSUES.md) and notebook section S28. That honesty is
 deliberate.
 
 ---
@@ -424,8 +424,7 @@ shipped version, **(7)** the vulnerable code is on a live call path, or reachabi
 explicitly deferred to manual review. Gates 1 to 6 are pure graph predicates. An alert
 that clears all seven carries its path. Anything else is suppressed with a stated reason.
 
-Full detail in [`docs/architecture.md`](docs/architecture.md) and
-[`docs/methodology.md`](docs/methodology.md).
+Full detail in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ---
 
@@ -439,7 +438,8 @@ notebooks/            the notebook, committed with its full-run outputs and 14 f
 scripts/              argparse CLIs: acquire, build graph, run pipeline, run evaluation, fetch artifacts, extra figures
 tests/                unit tests plus a smoke-pipeline integration test
 results/              committed evidence: 17 figures, 25 metric files, 11 exposure reports, 11 SBOMs
-docs/                 architecture, methodology (with citations), data sources, results, evaluation, glossary
+docs/                 9 pages: PRD, architecture, data sources, issues, performance, agents, scan, symbols, responsible use
+MEMORY.md             instructions and memory for AI agents (CLAUDE.md imports it)
 data/                 not committed; scripts regenerate or fetch it (see data/README.md)
 ```
 
@@ -465,7 +465,7 @@ python scripts/run_pipeline.py --profile full
 ```
 
 `make help` lists every task. Full instructions, including the full run on a GPU box, are
-in [`docs/reproducing.md`](docs/reproducing.md).
+in [`docs/ARCHITECTURE.md#reproduce`](docs/ARCHITECTURE.md#reproduce).
 
 ---
 
@@ -480,7 +480,7 @@ in [`docs/reproducing.md`](docs/reproducing.md).
 | CVSS v3.1 / v4.0 specifications | severity arithmetic, no model | FIRST.org |
 
 The corpus is a 2020-01-12 snapshot, which is why the resolver comparison is reported
-"in-snapshot". Details and provenance in [`docs/data-sources.md`](docs/data-sources.md).
+"in-snapshot". Details and provenance in [`docs/DATA-SOURCES.md`](docs/DATA-SOURCES.md).
 
 ---
 
@@ -488,15 +488,15 @@ The corpus is a 2020-01-12 snapshot, which is why the resolver comparison is rep
 
 | page | what it covers |
 |---|---|
-| [scan.md](docs/scan.md) | the `scgraph` command: scan, check, hook, MCP, GitHub Action, pre-commit |
-| [responsible-use.md](docs/responsible-use.md) | how to use scgraph and the public data services fairly |
-| [architecture.md](docs/architecture.md) | the pipeline, the CSR store, the alert ladder, a data-flow diagram |
-| [methodology.md](docs/methodology.md) | every graph and statistical method, with its literature reference and result |
-| [data-sources.md](docs/data-sources.md) | the corpus, exact versions, licenses, how it is parsed |
-| [results.md](docs/results.md) | the full-run findings, read in context |
-| [evaluation.md](docs/evaluation.md) | the five evaluation modules and the honest caveats |
-| [reproducing.md](docs/reproducing.md) | smoke locally, full on a GPU box |
-| [glossary.md](docs/glossary.md) | articulation point, CSR, CVSS, k-core, PURL, SBOM, VEX, and the rest |
+| [PRD.md](docs/PRD.md) | the problem, users, goals, non-goals, features and their status |
+| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | the layers, the CSR store, the alert ladder, the core engine, terms, how to reproduce |
+| [DATA-SOURCES.md](docs/DATA-SOURCES.md) | each input: version, license, how it is read, its limits |
+| [ISSUES.md](docs/ISSUES.md) | open work, known limits, past bugs, rejected changes |
+| [PERFORMANCE.md](docs/PERFORMANCE.md) | measured speed, security changes, how to measure again |
+| [AGENTS.md](docs/AGENTS.md) | the shared instructions for AI agents: commands, rules, budget |
+| [SCAN.md](docs/SCAN.md) | the `scgraph` command: scan, diff, check, hook, MCP, GitHub Action, pre-commit |
+| [SYMBOLS.md](docs/SYMBOLS.md) | vulnerable functions and reachability: method, measurements, trust |
+| [RESPONSIBLE-USE.md](docs/RESPONSIBLE-USE.md) | how to use scgraph and the public data services fairly |
 
 ---
 
@@ -504,7 +504,7 @@ The corpus is a 2020-01-12 snapshot, which is why the resolver comparison is rep
 
 - **The "100% path retention" figure is a tautology.** The real parse retention is
   96.64 percent, and the resolver-logic agreement is 97.2 percent; all three are given
-  and distinguished in [`docs/evaluation.md`](docs/evaluation.md).
+  and distinguished in [`docs/ISSUES.md`](docs/ISSUES.md).
 - **The ablation-monotonicity check is a consistency test, not a causal proof.**
 - **The semantic-relevance AUROC is partly lexical overlap** between the advisory text
   and the package name.
@@ -522,6 +522,6 @@ survey *Graph Engineering in the Era of LLM Agents* (arXiv:2608.21156v2).
 Licensed under [Apache-2.0](LICENSE). The bundled advisory and dependency data keep their
 upstream licenses.
 
-The figures in `results/figures/` and `docs/figures/` are covered by the same license. If
+The figures in `results/figures/` are covered by the same license. If
 you reuse one, please credit it as: *Yashh Mahajan, scgraph*, with a link to this
 repository.

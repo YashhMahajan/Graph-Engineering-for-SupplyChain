@@ -161,7 +161,7 @@ def deep_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     )
     monkeypatch.setenv("SCGRAPH_SYMBOLS", str(tmp_path / "symbols" / "pypi.jsonl"))
     rels = {("parent", "2.0"): PARENT, ("child", "1.0"): CHILD}
-    monkeypatch.setattr(DeepAnalyzer, "release", lambda self, n, v: rels.get((n, v)))
+    monkeypatch.setattr(DeepAnalyzer, "release", lambda self, n, v, e="PyPI": rels.get((n, v)))
     return proj
 
 
@@ -205,7 +205,7 @@ def test_without_deep_a_transitive_alert_stays_not_analyzed(deep_env, tmp_path, 
 def test_deep_scan_degrades_to_not_analyzed_when_source_is_unavailable(
     deep_env, tmp_path, capsys, monkeypatch
 ) -> None:
-    monkeypatch.setattr(DeepAnalyzer, "release", lambda self, n, v: None)
+    monkeypatch.setattr(DeepAnalyzer, "release", lambda self, n, v, e="PyPI": None)
     (deep_env / "app.py").write_text("import parent\nparent.fetch('x')\n")
     a = _scan(deep_env, tmp_path, capsys, "--deep")
     assert a["reachability"] == "not_analyzed" and "unavailable" in a["symbol_evidence"]

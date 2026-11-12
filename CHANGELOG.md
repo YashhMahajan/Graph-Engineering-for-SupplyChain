@@ -4,9 +4,19 @@ This file records all important changes to this project. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.4.0] - 2026-11-12
 
 ### Added
+
+- **Claims, signatures, export, questions.** Each inferred symbol is a claim in the hash-chained
+  ledger (found by GHSA or CVE id, with a receipt). The shipped datasets are signed with Ed25519
+  (`scgraph symbols verify`). `scgraph symbols export` writes the data and one OSV patch per
+  advisory. `scgraph ask` answers questions about a scan with a citation on every sentence.
+- **`--deep` for npm**, and **Go source references** for `--reachability` (the Go database already
+  names the functions).
+- GitHub Action inputs `reachability` and `deep`; the MCP tool `explain_advisory` returns the
+  verified vulnerable function; a weekly workflow rebuilds the datasets and opens a pull request.
+- The verify stage of `scripts/symbols/build_dataset.py` runs in parallel and prints progress.
 
 - **Vulnerable-symbol inference (`scgraph.symbols`)**: recovers the vulnerable function of
   advisories that do not name one, at build time, and verifies it against released source.
@@ -16,7 +26,7 @@ This file records all important changes to this project. The format follows
   fixed release) when there is no fix link. An LLM chooses among the top candidates only when
   the ranker is unsure: it answers with an option id, must quote its evidence, and its choice
   still has to pass the verifier. Every affected range of a package is tried, because a fix
-  commit belongs to one maintained line. See `docs/symbols.md`.
+  commit belongs to one maintained line. See `docs/SYMBOLS.md`.
 - **Entry points**: the public functions of a release that reach the vulnerable one, with
   re-export aliases (`requests.get` for `requests.api.get`), so project code can be matched.
 - **npm and TypeScript**: JavaScript is parsed with tree-sitter (optional extra
@@ -45,6 +55,8 @@ This file records all important changes to this project. The format follows
 
 ### Changed
 
+- The documentation is reduced to the files a reader needs (`docs/`), written in Simplified
+  Technical English. `MEMORY.md` at the root holds the instructions and the memory for AI agents.
 - The symbol datasets ship one file per ecosystem under `scgraph/symbols/data/`, each with
   its own SHA-256 manifest.
 - A function counts as "added by the fix" only when its whole span is added and nothing is
@@ -160,7 +172,7 @@ This file records all important changes to this project. The format follows
 - `examples/` with three sample lockfiles, one of them a reconstruction of the
   September 2025 npm compromise.
 - `scripts/make_scan_figures.py`, three figures and `results/metrics/scan_examples.json`.
-- `docs/scan.md` and `docs/responsible-use.md`.
+- `docs/SCAN.md` and `docs/RESPONSIBLE-USE.md`.
 
 ## [1.1.0] - 2026-11-02
 
@@ -174,7 +186,7 @@ This file records all important changes to this project. The format follows
   compaction and verifiable answer receipts).
 - **`scgraph.adapters.software`**: the CVE pipeline on the core engine; publication
   dates become edge validity, so as-of audits use the same mechanism as any domain.
-- `docs/core.md`.
+- `docs/ARCHITECTURE.md#core-engine`.
 - `scripts/demo.py` and `make demo`: one abstention and one exposure path, no data needed.
 - OpenSSF Scorecard workflow and README badge.
 - Release workflow: a `vX.Y.Z` tag tests, builds and publishes a GitHub Release with
@@ -184,7 +196,7 @@ This file records all important changes to this project. The format follows
 
 ### Changed
 
-All numbers come from `make bench` (2M versions, 8M edges). See `docs/performance.md`.
+All numbers come from `make bench` (2M versions, 8M edges). See `docs/PERFORMANCE.md`.
 
 - **Load time of the store: 1.34 s to 0.020 s (67x faster).** The store does not use
   pickle now. Strings are a UTF-8 block plus offsets, and both are memory-mapped.
@@ -245,7 +257,7 @@ resolved edges, 285,698 advisories).
 
 ### Known limits
 
-- Three metrics are partly tautological or lexical. `docs/evaluation.md` and notebook
+- Three metrics are partly tautological or lexical. `docs/ISSUES.md` and notebook
   section S28 mark them: the "100% path retention" value (real parse retention is
   96.64%), the ablation-monotonicity consistency check, and the semantic-relevance AUROC
   (partly text overlap).

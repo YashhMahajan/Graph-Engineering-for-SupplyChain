@@ -40,7 +40,7 @@ executes code:
 - A guard bypass is a security issue. Examples: a command form that the hook does not
   read, or a malicious release that `check` allows when OSV has a `MAL-` record for it.
   Report it in private, as below.
-- Rules for fair use of the tool and the data: [`docs/responsible-use.md`](docs/responsible-use.md).
+- Rules for fair use of the tool and the data: [`docs/RESPONSIBLE-USE.md`](docs/RESPONSIBLE-USE.md).
 
 ## Report a vulnerability
 

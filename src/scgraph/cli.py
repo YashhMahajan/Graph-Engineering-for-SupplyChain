@@ -132,11 +132,10 @@ def _scan(a: argparse.Namespace) -> int:
             for finding in r.alerts:
                 key = (root, finding.ecosystem)
                 if key not in called:  # one source scan per project and language
-                    scan = (
-                        reachability.scan_js
-                        if finding.ecosystem == "npm"
-                        else reachability.scan_python
-                    )
+                    scan = {
+                        "npm": reachability.scan_js,
+                        "Go": reachability.scan_go,
+                    }.get(finding.ecosystem, reachability.scan_python)
                     called[key] = scan(root)
                 names = called[key]
                 if finding.symbols:
