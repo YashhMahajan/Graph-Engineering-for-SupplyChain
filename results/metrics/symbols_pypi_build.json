@@ -1,45 +1,49 @@
 {
+ "ecosystem": "pypi",
  "generated": "2026-11-12",
  "selected": 250,
  "selected_with_fix_link": 200,
+ "packages": 63,
  "prepared": {
   "fix": 173,
   "search": 64,
   "none": 13
  },
- "records": 171,
+ "records": 536,
  "by_method": {
-  "fix-diff": 120,
-  "fix-diff+llm": 28,
-  "search+llm": 23
+  "fix-diff": 485,
+  "fix-diff+llm": 25,
+  "search+llm": 26
  },
  "verifier": {
-  "verified": 164,
-  "present_only": 7
+  "verified": 166,
+  "present_only": 9
  },
  "abstained": {
-  "fix: no candidate verified": 25,
-  "search: no candidate verified": 25,
-  "search: not confirmed by the LLM": 16,
+  "search: no candidate verified": 28,
+  "fix: no candidate verified": 24,
   "no GitHub fix commit or pull request linked": 11,
+  "search: not confirmed by the LLM": 10,
   "the fix changes no function (module-level code only)": 1,
   "the fix changes no Python or Go source outside tests": 1
  },
- "with_entry_points": 157,
+ "with_entry_points": 521,
  "llm": {
-  "requests": 16,
+  "requests": 0,
   "cached": 0,
-  "tasks": 190,
-  "answered": 83,
-  "stopped": "max_requests",
-  "failed": 2
+  "task_cache_hits": 81,
+  "tasks": 192,
+  "answered": 81,
+  "failed": 0,
+  "split": 0,
+  "stopped": ""
  },
  "search_needs_llm": true,
  "manifest": {
   "file": "pypi.jsonl",
-  "count": 171,
-  "sha256": "1b388efff6e281f6d5b6f8b54f379ffc60ab71a616ad45960cea110e361959ed",
-  "generator": "scripts/symbols/build_pypi.py",
+  "count": 536,
+  "sha256": "9042e486fcb3d4aea876b3c7f12d7bf47e028c1ae37327083200ff27d0a351c4",
+  "generator": "scripts/symbols/build_dataset.py",
   "methods": [
    "fix-diff",
    "fix-diff+llm",

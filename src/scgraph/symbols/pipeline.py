@@ -20,7 +20,14 @@ from .llm import OpenRouter
 from .rank import Ranker, load_default, rank
 from .retrieve import Hit, search
 from .select import Choice, Option, Task, choose
-from .source import Release, bracket, go_release, go_versions, pypi_release, pypi_versions
+from .source import (
+    Release,
+    brackets,
+    go_release,
+    go_versions,
+    pypi_release,
+    pypi_versions,
+)
 from .verify import Verdict, verify
 
 __all__ = ["Prepared", "SymbolRecord", "finalize", "llm_rerank", "prepare", "task_for"]
@@ -64,6 +71,8 @@ class Prepared:
     affected: Release | None = None
     fixed: Release | None = None
     versions: tuple[str, str] = ("", "")
+    alt_pairs: list[tuple[str, str]] = field(default_factory=list)  # other affected ranges
+    loader: Callable[[tuple[str, str]], tuple[Release | None, Release | None]] | None = None
 
     @property
     def id(self) -> str:
@@ -79,19 +88,30 @@ class Prepared:
         return s[0] - s[1]
 
 
-def _releases(
+def _plan(
     f: Fetcher, record: dict, eco: str, pkg: str
-) -> tuple[Release | None, Release | None, tuple[str, str]]:
+) -> tuple[
+    Callable[[tuple[str, str]], tuple[Release | None, Release | None]], list[tuple[str, str]]
+]:
+    """How to read the releases of each (last affected, first fixed) pair, and the pairs."""
     get: Callable[[Fetcher, str, str], Release | None]
     if eco == "PyPI":
-        last, fixed = bracket(record, eco, pkg, pypi_versions(f, pkg))
+        pairs = brackets(record, eco, pkg, pypi_versions(f, pkg))
         get = pypi_release
+    elif eco == "npm":
+        from .npm import npm_release, npm_versions
+
+        pairs = brackets(record, eco, pkg, npm_versions(f, pkg))
+        get = npm_release
     else:
-        last, fixed = bracket(record, eco, pkg, go_versions(f, pkg))
+        pairs = brackets(record, eco, pkg, go_versions(f, pkg))
         get = go_release
-    aff = get(f, pkg, last) if last else None
-    fix = get(f, pkg, fixed) if fixed else None
-    return aff, fix, (last, fixed)
+
+    def load(pair: tuple[str, str]) -> tuple[Release | None, Release | None]:
+        last, fixed = pair
+        return (get(f, pkg, last) if last else None, get(f, pkg, fixed) if fixed else None)
+
+    return load, pairs or [("", "")]
 
 
 def prepare(
@@ -106,7 +126,16 @@ def prepare(
     p = Prepared(record, ecosystem, package, "none")
     module = package if ecosystem == "Go" else ""
     a = engine_a(record, fetcher, module=module, workers=2)
-    p.affected, p.fixed, p.versions = _releases(fetcher, record, ecosystem, package)
+    want = {"PyPI": "python", "npm": "javascript"}.get(ecosystem, "go")
+    if a.cands is not None:  # an npm advisory can fix Go or Python code in the same repository
+        a.cands.candidates = [c for c in a.cands.candidates if c.lang == want]
+        if not a.cands.candidates:
+            a.cands = None
+            a.reason = f"the fix changes no {want} function"
+    load, pairs = _plan(fetcher, record, ecosystem, package)
+    p.versions = pairs[0]
+    p.alt_pairs, p.loader = pairs[1:], load
+    p.affected, p.fixed = load(pairs[0])
     if a.cands is not None:
         p.mode, p.fix, p.cset = "fix", a.fix, a.cands
         p.ranked = rank(a.cands.candidates, ranker or load_default())
@@ -222,33 +251,50 @@ def finalize(
         llm = {"model": choice.model, "prompt_hash": choice.prompt_hash, "answer": "none"}
         if p.mode == "search":  # nothing in the short list matched: abstain
             return None
-    for i, (mod, qn, conf, ev) in enumerate(order[:6]):
-        v: Verdict = verify(p.affected, p.fixed, mod, qn)
-        if not v.ok:
-            continue
-        eps: list[str] = []
-        if p.affected is not None:
-            eps = dotted_names(p.affected, entry_points(p.affected, mod, qn))
-        used_llm = llm is not None and "answer" not in llm and i == 0
-        method = ("fix-diff" if p.mode == "fix" else "search") + ("+llm" if used_llm else "")
-        conf_out = llm["confidence"] if used_llm and llm else conf
-        return SymbolRecord(
-            id=p.id,
-            aliases=_aliases(p.record),
-            ecosystem=p.ecosystem,
-            package=p.package,
-            affected_version=p.versions[0],
-            fixed_version=p.versions[1],
-            symbol=f"{mod}.{qn}" if mod else qn,
-            module=mod,
-            qualname=qn,
-            entry_points=eps,
-            method=method,
-            confidence=round(float(conf_out), 3),
-            verified=v.status,
-            verify_detail=v.detail,
-            evidence=ev,
-            llm=llm if used_llm else None,
-            created=time.strftime("%Y-%m-%d"),
-        )
-    return None
+
+    def attempt(
+        aff: Release | None, fixed: Release | None, versions: tuple[str, str]
+    ) -> SymbolRecord | None:
+        for i, (mod, qn, conf, ev) in enumerate(order[:6]):
+            v: Verdict = verify(aff, fixed, mod, qn)
+            if not v.ok:
+                continue
+            if aff is not None:  # use the release's own module id (a repo path may differ)
+                loc = aff.locate(mod, qn)
+                if loc is not None:
+                    mod = loc[0]
+            eps: list[str] = []
+            if aff is not None:
+                eps = dotted_names(aff, entry_points(aff, mod, qn))
+            used_llm = llm is not None and "answer" not in llm and i == 0
+            method = ("fix-diff" if p.mode == "fix" else "search") + ("+llm" if used_llm else "")
+            conf_out = llm["confidence"] if used_llm and llm else conf
+            return SymbolRecord(
+                id=p.id,
+                aliases=_aliases(p.record),
+                ecosystem=p.ecosystem,
+                package=p.package,
+                affected_version=versions[0],
+                fixed_version=versions[1],
+                symbol=f"{mod}.{qn}" if mod else qn,
+                module=mod,
+                qualname=qn,
+                entry_points=eps,
+                method=method,
+                confidence=round(float(conf_out), 3),
+                verified=v.status,
+                verify_detail=v.detail,
+                evidence=ev,
+                llm=llm if used_llm else None,
+                created=time.strftime("%Y-%m-%d"),
+            )
+        return None
+
+    rec = attempt(p.affected, p.fixed, p.versions)
+    if rec is None and p.mode == "fix" and p.loader is not None:
+        for pair in p.alt_pairs[:3]:  # a fix commit belongs to one maintained line only
+            aff, fixed = p.loader(pair)
+            rec = attempt(aff, fixed, pair)
+            if rec is not None:
+                break
+    return rec

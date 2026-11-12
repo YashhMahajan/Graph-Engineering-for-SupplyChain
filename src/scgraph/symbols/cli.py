@@ -18,7 +18,10 @@ def _record_for(fetcher: Fetcher, advisory: str) -> dict | None:
 def _target(record: dict) -> tuple[str, str] | None:
     for a in record.get("affected") or []:
         p = a.get("package") or {}
-        if p.get("ecosystem") in ("PyPI", "Go") and p.get("name") not in ("stdlib", "toolchain"):
+        if p.get("ecosystem") in ("PyPI", "Go", "npm") and p.get("name") not in (
+            "stdlib",
+            "toolchain",
+        ):
             return p["ecosystem"], p["name"]
     return None
 
@@ -33,7 +36,7 @@ def _infer(a: argparse.Namespace) -> int:
         return 2
     tgt = _target(rec)
     if tgt is None:
-        print("scgraph: only PyPI and Go advisories are supported", file=sys.stderr)
+        print("scgraph: only PyPI, npm and Go advisories are supported", file=sys.stderr)
         return 2
     p = prepare(rec, tgt[0], tgt[1], f)
     choice = None

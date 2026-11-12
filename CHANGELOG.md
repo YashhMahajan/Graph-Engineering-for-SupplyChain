@@ -15,18 +15,40 @@ This file records all important changes to this project. The format follows
   (BM25 over identifiers and docstrings plus the diff between the last affected and the first
   fixed release) when there is no fix link. An LLM chooses among the top candidates only when
   the ranker is unsure: it answers with an option id, must quote its evidence, and its choice
-  still has to pass the verifier. Entry points (public functions that reach the vulnerable
-  one, with re-export aliases) are added for reachability. See `docs/symbols.md`.
-- `scgraph scan --reachability` uses the inferred-symbol dataset when OSV names no function,
-  with zero model calls, labels the verdict "(inferred)", and records the evidence. A new
-  `class_used` verdict replaces `not_called` when a vulnerable method's class is referenced.
+  still has to pass the verifier. Every affected range of a package is tried, because a fix
+  commit belongs to one maintained line. See `docs/symbols.md`.
+- **Entry points**: the public functions of a release that reach the vulnerable one, with
+  re-export aliases (`requests.get` for `requests.api.get`), so project code can be matched.
+- **npm and TypeScript**: JavaScript is parsed with tree-sitter (optional extra
+  `scgraph-cli[symbols-js]`). *Public* means *exported*: CommonJS and ES module exports,
+  re-exports from the package entry, UMD and IIFE wrappers, and long factory functions that
+  assign properties (`lodash.template = template`). Fixes written in TypeScript are matched to
+  the compiled release. Names match how projects import: `lodash.template`, `lodash/lodash.template`.
+- **`scgraph scan --reachability`** uses the inferred-symbol dataset when OSV names no function,
+  for Python and npm direct dependencies, with zero model calls. Verdicts that rest on it are
+  labelled `(inferred)` and carry the fix commit. A new `class_used` verdict replaces
+  `not_called` when a vulnerable method's class is referenced.
+- **`scgraph scan --deep`**: transitive reachability for Python. The dependency path is walked
+  backwards through the released source of each package on it, and the public names of the
+  direct dependency that lead to the vulnerable function are matched against project code.
+  Five mechanisms handle what a name-based call graph misses: resolved dotted references,
+  dunders and properties reached through their class, functions passed as values, import-time
+  code, and `getattr(self, "visit_" + x)` dispatch.
 - `scgraph symbols infer | show | budget`.
-- An OpenRouter client for free tiers: a model waterfall (any failure moves to the next model;
-  a model that refuses the key is skipped for a day), a prompt-hash cache, batched requests,
-  a waits-then-retry policy for per-minute limits and a clean stop at the daily cap.
-- Evaluation on the Go vulnerability database with a temporal split
-  (`results/metrics/symbols_eval.json`, `results/metrics/symbols_entry.json`) and a PyPI build
-  report (`results/metrics/symbols_pypi_build.json`). `make symbols-eval`.
+- An OpenRouter client for free tiers: a model waterfall configurable with `SCGRAPH_LLM_MODELS`,
+  a per-advisory answer cache (independent of batching), batch splitting on failure, a
+  waits-then-retry policy for per-minute limits, a clean stop at the daily cap, and cache-only
+  replay modes that cannot send a request.
+- Evaluation with a temporal split on the Go vulnerability database and a dynamic ground truth
+  for transitive reachability (functions that actually ran under a profiler), with an ablation
+  of each mechanism: `results/metrics/symbols_*.json`, `make symbols-eval`. Notebook Part XI.
+
+### Changed
+
+- The symbol datasets ship one file per ecosystem under `scgraph/symbols/data/`, each with
+  its own SHA-256 manifest.
+- A function counts as "added by the fix" only when its whole span is added and nothing is
+  deleted inside it (an edited one-line function used to be misclassified).
 
 ## [1.3.0] - 2026-11-08
 

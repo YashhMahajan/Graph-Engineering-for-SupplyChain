@@ -28,11 +28,21 @@ __all__ = [
     "go_package",
     "is_code",
     "is_test_path",
+    "js_module",
     "lang_of",
     "py_module",
 ]
 
-_EXT = {".py": "python", ".go": "go"}
+_EXT = {
+    ".ts": "javascript",
+    ".mts": "javascript",
+    ".cts": "javascript",
+    ".py": "python",
+    ".go": "go",
+    ".js": "javascript",
+    ".mjs": "javascript",
+    ".cjs": "javascript",
+}
 _SKIP_SEGMENTS = {
     "test",
     "tests",
@@ -54,6 +64,12 @@ _SKIP_SEGMENTS = {
     "fixtures",
     "integration_tests",
     "e2e",
+    "__tests__",
+    "__mocks__",
+    "spec",
+    "specs",
+    "node_modules",
+    "coverage",
 }
 _PY_ROOTS = {"src", "lib", "python", "py", "pysrc", "source"}
 _CHECK = re.compile(
@@ -77,7 +93,10 @@ def is_test_path(path: str) -> bool:
         return True
     return (
         base.startswith("test_")
-        or base.endswith(("_test.py", "_test.go", "_tests.py"))
+        or base.endswith(
+            ("_test.py", "_test.go", "_tests.py", ".test.js", ".spec.js", ".test.mjs", ".spec.mjs")
+        )
+        or base.endswith((".min.js", ".d.ts", ".test.ts", ".spec.ts"))
         or base in {"conftest.py", "tests.py", "setup.py", "noxfile.py", "fabfile.py"}
     )
 
@@ -95,6 +114,11 @@ def py_module(path: str) -> str:
     if segs[-1] == "__init__":
         segs = segs[:-1]
     return ".".join(s for s in segs if s)
+
+
+def js_module(path: str) -> str:
+    """``lib/utils.js`` -> ``lib/utils`` (a path inside a package, without its extension)."""
+    return posixpath.splitext(path)[0]
 
 
 def go_package(module: str, path: str) -> str:
@@ -240,6 +264,14 @@ def _name_in(text: str, c: Candidate) -> bool:
     return re.search(rf"(?<![\w.]){re.escape(c.name)}(?!\w)", text) is not None
 
 
+def _module_of(lang: str, path: str, go_module: str) -> str:
+    if lang == "python":
+        return py_module(path)
+    if lang == "javascript":
+        return js_module(path)
+    return go_package(go_module, path)
+
+
 def _from_context(context: str, lang: str) -> Func | None:
     """A stand-in function from git's hunk header, used when the post-fix file is missing."""
     m = _CONTEXT_NAME.match(context)
@@ -279,9 +311,9 @@ def build_candidates(
         if fd.is_deleted:
             continue
         cs.code_files += 1
-        mod = py_module(fd.path) if lang == "python" else go_package(module, fd.path)
+        mod = _module_of(lang, fd.path, module)
         src = sources.get(fd.path)
-        funcs = functions(src, lang) if src else []
+        funcs = functions(src, lang, path=fd.path) if src else []
         if src is None:
             cs.missing_sources += 1
         funcs_by_file[fd.path] = funcs
@@ -289,6 +321,7 @@ def build_candidates(
             hi = len(cs.hunks)
             cs.hunks.append(h)
             added = set(h.added)
+            removed_at = set(h.removed_anchors)
             touched: dict[str, tuple[Func | None, int, int]] = {}
             changes = [(a, "+") for a in h.added] + [(a, "-") for a in h.removed_anchors]
             for ln, kind in changes:
@@ -317,7 +350,12 @@ def build_candidates(
                         dunder=f.dunder,
                         doc=f.doc,
                         signature=f.signature,
-                        new_function=f.start > 0 and f.start in added,
+                        # new only when the whole span is added and nothing was deleted inside it:
+                        # a one-line function that was edited has its first line "added" too
+                        new_function=f.start > 0
+                        and f.end >= f.start
+                        and all(ln in added for ln in range(f.start, f.end + 1))
+                        and not any(f.start <= a <= f.end + 1 for a in removed_at),
                     )
                     by_key[key] = c
                 c.added += a
@@ -333,7 +371,7 @@ def build_candidates(
     # callers of changed functions, in the same files (the only post-fix source we hold)
     for path, funcs in funcs_by_file.items():
         lang = lang_of(path) or ""
-        mod = py_module(path) if lang == "python" else go_package(module, path)
+        mod = _module_of(lang, path, module)
         n = 0
         for f in funcs:
             if (path, f.qualname) in by_key or n >= max_callers * max(1, len(changed_names)):

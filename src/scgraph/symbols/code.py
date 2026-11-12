@@ -39,6 +39,11 @@ class Func:
     calls: frozenset[str]  # bare names this function calls (last segment of a.b.c())
     body_hash: str  # changes whenever the body changes, not on a pure move
     signature: str
+    # Python call-graph facts (empty for Go): what a name-based graph needs beyond ``calls``
+    is_property: bool = False  # @property / cached_property / setter: runs on attribute access
+    dyn: tuple[str, ...] = ()  # literal prefixes of getattr(self, "visit_" + x) dispatches
+    loads: frozenset[str] = frozenset()  # bare names read as values (callbacks, properties)
+    refs: frozenset[str] = frozenset()  # dotted names resolved through imports (pkg.mod.f)
 
     @property
     def name(self) -> str:
@@ -47,6 +52,16 @@ class Func:
     @property
     def dunder(self) -> bool:
         return self.name.startswith("__") and self.name.endswith("__")
+
+    @property
+    def implicit(self) -> bool:
+        """Runs through syntax or attribute access, never through ``name(...)``."""
+        return self.dunder or self.is_property
+
+    @property
+    def owner(self) -> str:
+        """The class a method belongs to ("" for a function)."""
+        return self.qualname.rsplit(".", 1)[0] if self.is_method else ""
 
 
 def enclosing(funcs: list[Func], line: int) -> Func | None:
@@ -84,16 +99,110 @@ def _calls(node: ast.AST) -> frozenset[str]:
     return frozenset(names)
 
 
+def _alias_map(tree: ast.AST) -> dict[str, str]:
+    """Local name -> absolute dotted name for every import in the file."""
+    alias: dict[str, str] = {}
+    for n in ast.walk(tree):
+        if isinstance(n, ast.Import):
+            for a in n.names:
+                alias[a.asname or a.name.split(".")[0]] = (
+                    a.name if a.asname else a.name.split(".")[0]
+                )
+        elif isinstance(n, ast.ImportFrom) and n.module and n.level == 0:
+            for a in n.names:
+                if a.name != "*":
+                    alias[a.asname or a.name] = f"{n.module}.{a.name}"
+    return alias
+
+
+def _chain(node: ast.AST) -> list[str] | None:
+    parts: list[str] = []
+    while isinstance(node, ast.Attribute):
+        parts.append(node.attr)
+        node = node.value
+    if isinstance(node, ast.Name):
+        parts.append(node.id)
+        return parts[::-1]
+    return None
+
+
+def _loads_refs(node: ast.AST, alias: dict[str, str]) -> tuple[frozenset[str], frozenset[str]]:
+    loads: set[str] = set()
+    refs: set[str] = set()
+    for n in ast.walk(node):
+        if isinstance(n, ast.Attribute | ast.Name) and isinstance(
+            getattr(n, "ctx", None), ast.Load
+        ):
+            loads.add(n.attr if isinstance(n, ast.Attribute) else n.id)
+            chain = _chain(n)
+            if chain and chain[0] in alias:
+                refs.add(".".join([alias[chain[0]], *chain[1:]]))
+    return frozenset(loads), frozenset(refs)
+
+
+def _const_prefix(node: ast.AST) -> str:
+    """The literal start of a dynamic string: "visit_" in "visit_" + x, f"visit_{x}" or
+    "visit_{}".format(x)."""
+    if isinstance(node, ast.JoinedStr) and node.values:
+        v = node.values[0]
+        return v.value if isinstance(v, ast.Constant) and isinstance(v.value, str) else ""
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add | ast.Mod):
+        left = node.left
+        if isinstance(left, ast.Constant) and isinstance(left.value, str):
+            return left.value.split("%")[0]
+    if (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "format"
+        and isinstance(node.func.value, ast.Constant)
+        and isinstance(node.func.value.value, str)
+    ):
+        return node.func.value.value.split("{")[0]
+    return ""
+
+
+def _dyn_prefixes(node: ast.AST) -> tuple[str, ...]:
+    out: set[str] = set()
+    for n in ast.walk(node):
+        if (
+            isinstance(n, ast.Call)
+            and isinstance(n.func, ast.Name)
+            and n.func.id == "getattr"
+            and len(n.args) >= 2
+        ):
+            pre = _const_prefix(n.args[1])
+            if len(pre) >= 3:
+                out.add(pre)
+    return tuple(sorted(out))
+
+
+_PROPERTY = {"property", "cached_property", "setter", "getter", "deleter", "classproperty"}
+
+
+def _is_property(n: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    for d in n.decorator_list:
+        name = d.attr if isinstance(d, ast.Attribute) else d.id if isinstance(d, ast.Name) else ""
+        if name in _PROPERTY:
+            return True
+    return False
+
+
 def _py_hash(node: ast.AST) -> str:
     return hashlib.sha256(ast.dump(node, include_attributes=False).encode()).hexdigest()[:16]
 
 
-def py_functions(source: str) -> list[Func]:
-    """Every module-level function and every method of a class reachable from module level."""
+MODULE_LEVEL = "<module>"
+
+
+def py_functions(source: str, with_module: bool = False) -> list[Func]:
+    """Every module-level function and every method of a class reachable from module level.
+    With ``with_module``, a pseudo-function ``<module>`` is appended that stands for the code
+    that runs when the file is imported (top-level statements and class bodies)."""
     try:
         tree = ast.parse(source)
     except (SyntaxError, ValueError):
         return []
+    alias = _alias_map(tree)
     out: list[Func] = []
 
     def visit(body: list[ast.stmt], prefix: str, in_class: bool) -> None:
@@ -107,6 +216,7 @@ def py_functions(source: str) -> list[Func]:
                     for p in parts
                 )
                 args = [a.arg for a in n.args.args]
+                loads, refs = _loads_refs(n, alias)
                 out.append(
                     Func(
                         qualname=q,
@@ -118,6 +228,10 @@ def py_functions(source: str) -> list[Func]:
                         calls=_calls(n),
                         body_hash=_py_hash(n),
                         signature=f"def {n.name}({', '.join(args)})",
+                        is_property=_is_property(n),
+                        dyn=_dyn_prefixes(n),
+                        loads=loads,
+                        refs=refs,
                     )
                 )
             elif isinstance(n, ast.ClassDef):
@@ -131,6 +245,30 @@ def py_functions(source: str) -> list[Func]:
                     visit(n.finalbody, prefix, in_class)
 
     visit(tree.body, "", False)
+    if with_module:
+        top = ast.Module(
+            body=[
+                n for n in tree.body if not isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)
+            ],
+            type_ignores=[],
+        )
+        loads, refs = _loads_refs(top, alias)
+        out.append(
+            Func(
+                qualname=MODULE_LEVEL,
+                start=1,
+                end=0,  # never encloses a diff line
+                public=True,
+                is_method=False,
+                doc="",
+                calls=_calls(top),
+                body_hash=_py_hash(top),
+                signature=MODULE_LEVEL,
+                dyn=_dyn_prefixes(top),
+                loads=loads,
+                refs=refs,
+            )
+        )
     return out
 
 
@@ -232,9 +370,13 @@ def go_functions(source: str) -> list[Func]:
     return out
 
 
-def functions(source: str, lang: str) -> list[Func]:
+def functions(source: str, lang: str, with_module: bool = False, path: str = "") -> list[Func]:
     if lang == "python":
-        return py_functions(source)
+        return py_functions(source, with_module)
+    if lang == "javascript":
+        from .js import js_functions
+
+        return js_functions(source, with_module, ts=path.endswith((".ts", ".mts", ".cts")))
     if lang == "go":
         return go_functions(source)
     raise ValueError(f"unsupported language: {lang}")

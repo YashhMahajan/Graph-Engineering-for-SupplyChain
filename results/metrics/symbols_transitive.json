@@ -1,0 +1,200 @@
+{
+ "method": "dynamic ground truth: functions executed in the dependency while the parent ran a real scenario (requests: GET/POST/Session against a local server; flask: routes, templates, sessions, JSON via the test client)",
+ "environment": {
+  "flask": "flask-3.1.3.dist-info",
+  "requests": "requests-2.34.2.dist-info",
+  "certifi": "certifi-2026.10.23.dist-info",
+  "blinker": "blinker-1.9.0.dist-info",
+  "itsdangerous": "itsdangerous-2.2.0.dist-info",
+  "click": "click-8.5.1.dist-info",
+  "pip": "pip-25.0.1.dist-info",
+  "urllib3": "urllib3-2.8.0.dist-info",
+  "jinja2": "jinja2-3.1.6.dist-info",
+  "markupsafe": "markupsafe-3.0.4.dist-info",
+  "charset_normalizer": "charset_normalizer-3.5.2.dist-info",
+  "idna": "idna-3.20.dist-info",
+  "werkzeug": "werkzeug-3.1.9.dist-info"
+ },
+ "chains": [
+  {
+   "chain": "requests -> urllib3",
+   "executed_functions": 91,
+   "reached": 91,
+   "recall": 1.0,
+   "dependency_functions": 478,
+   "static_reached": 420,
+   "static_reached_share": 0.8787,
+   "dynamic_executed_share": 0.1904
+  },
+  {
+   "chain": "requests -> idna",
+   "executed_functions": 0,
+   "reached": 0,
+   "recall": null,
+   "dependency_functions": 47,
+   "static_reached": 37,
+   "static_reached_share": 0.7872,
+   "dynamic_executed_share": 0.0
+  },
+  {
+   "chain": "requests -> charset_normalizer",
+   "executed_functions": 10,
+   "reached": 10,
+   "recall": 1.0,
+   "dependency_functions": 136,
+   "static_reached": 44,
+   "static_reached_share": 0.3235,
+   "dynamic_executed_share": 0.0735
+  },
+  {
+   "chain": "requests -> certifi",
+   "executed_functions": 1,
+   "reached": 1,
+   "recall": 1.0,
+   "dependency_functions": 3,
+   "static_reached": 2,
+   "static_reached_share": 0.6667,
+   "dynamic_executed_share": 0.3333
+  },
+  {
+   "chain": "flask -> werkzeug",
+   "executed_functions": 178,
+   "reached": 173,
+   "recall": 0.9719,
+   "dependency_functions": 950,
+   "static_reached": 793,
+   "static_reached_share": 0.8347,
+   "dynamic_executed_share": 0.1874
+  },
+  {
+   "chain": "flask -> jinja2",
+   "executed_functions": 141,
+   "reached": 129,
+   "recall": 0.9149,
+   "dependency_functions": 689,
+   "static_reached": 529,
+   "static_reached_share": 0.7678,
+   "dynamic_executed_share": 0.2046
+  },
+  {
+   "chain": "flask -> click",
+   "executed_functions": 26,
+   "reached": 23,
+   "recall": 0.8846,
+   "dependency_functions": 505,
+   "static_reached": 438,
+   "static_reached_share": 0.8673,
+   "dynamic_executed_share": 0.0515
+  },
+  {
+   "chain": "flask -> itsdangerous",
+   "executed_functions": 29,
+   "reached": 28,
+   "recall": 0.9655,
+   "dependency_functions": 55,
+   "static_reached": 47,
+   "static_reached_share": 0.8545,
+   "dynamic_executed_share": 0.5273
+  },
+  {
+   "chain": "flask -> blinker",
+   "executed_functions": 7,
+   "reached": 7,
+   "recall": 1.0,
+   "dependency_functions": 27,
+   "static_reached": 19,
+   "static_reached_share": 0.7037,
+   "dynamic_executed_share": 0.2593
+  },
+  {
+   "chain": "flask -> markupsafe",
+   "executed_functions": 6,
+   "reached": 5,
+   "recall": 0.8333,
+   "dependency_functions": 54,
+   "static_reached": 50,
+   "static_reached_share": 0.9259,
+   "dynamic_executed_share": 0.1111
+  },
+  {
+   "chain": "flask -> jinja2 -> markupsafe",
+   "executed_functions": 6,
+   "reached": 6,
+   "recall": 1.0,
+   "dependency_functions": 54,
+   "static_reached": 51,
+   "static_reached_share": 0.9444,
+   "dynamic_executed_share": 0.1111
+  },
+  {
+   "chain": "flask -> werkzeug -> markupsafe",
+   "executed_functions": 6,
+   "reached": 5,
+   "recall": 0.8333,
+   "dependency_functions": 54,
+   "static_reached": 50,
+   "static_reached_share": 0.9259,
+   "dynamic_executed_share": 0.1111
+  }
+ ],
+ "overall": {
+  "executed_functions": 501,
+  "reached": 478,
+  "recall": 0.9541,
+  "dependency_functions": 3052,
+  "static_reached_share": 0.8126
+ },
+ "ablation": {
+  "all mechanisms on": {
+   "executed_functions": 501,
+   "reached": 478,
+   "recall": 0.9541,
+   "dependency_functions": 3052,
+   "static_reached_share": 0.8126
+  },
+  "without refs": {
+   "executed_functions": 501,
+   "reached": 473,
+   "recall": 0.9441,
+   "dependency_functions": 3052,
+   "static_reached_share": 0.7955
+  },
+  "without implicit": {
+   "executed_functions": 501,
+   "reached": 452,
+   "recall": 0.9022,
+   "dependency_functions": 3052,
+   "static_reached_share": 0.728
+  },
+  "without dyn": {
+   "executed_functions": 501,
+   "reached": 478,
+   "recall": 0.9541,
+   "dependency_functions": 3052,
+   "static_reached_share": 0.8083
+  },
+  "without loads": {
+   "executed_functions": 501,
+   "reached": 467,
+   "recall": 0.9321,
+   "dependency_functions": 3052,
+   "static_reached_share": 0.7615
+  },
+  "without module": {
+   "executed_functions": 501,
+   "reached": 389,
+   "recall": 0.7764,
+   "dependency_functions": 3052,
+   "static_reached_share": 0.6121
+  },
+  "none (resolved calls by bare name only)": {
+   "executed_functions": 501,
+   "reached": 286,
+   "recall": 0.5709,
+   "dependency_functions": 3052,
+   "static_reached_share": 0.3961
+  }
+ },
+ "seconds": 1026.9,
+ "generated": "2026-11-12"
+}

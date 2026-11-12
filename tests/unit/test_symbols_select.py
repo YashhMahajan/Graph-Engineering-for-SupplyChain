@@ -110,3 +110,39 @@ def test_prompt_lists_ids_symbols_and_excerpts() -> None:
     assert m[0]["role"] == "system" and "option ids" in m[0]["content"]
     assert "[C1] A.pkg.patched" in m[1]["content"] and "[C3] A.pkg.other3" in m[1]["content"]
     assert "scheme.startswith('https')" in m[1]["content"]
+
+
+def test_answers_are_reused_under_a_different_batching(tmp_path: Path) -> None:
+    ans = json.dumps({"results": [{"task": f"T{i}", "choice": "C1"} for i in range(1, 5)]})
+    c, f = client(tmp_path, [ans])
+    tasks = [task(x) for x in "ABCD"]
+    out, rep = choose(c, tasks, batch_size=4)
+    assert rep["requests"] == 1 and len(out) == 4
+    # a different batch size and order would change every prompt: the per-task cache still hits
+    again, rep2 = choose(c, list(reversed(tasks)), batch_size=1)
+    assert rep2["requests"] == 0 and rep2["task_cache_hits"] == 4 and len(again) == 4
+    assert again["A"].symbol == "A.pkg.patched" and again["A"].cached
+    assert len(f.prompts) == 1
+
+
+def test_a_failed_batch_is_split_and_the_good_half_is_kept(tmp_path: Path) -> None:
+    good = json.dumps({"results": [{"task": "T1", "choice": "C1"}, {"task": "T2", "choice": "C1"}]})
+    c, f = client(tmp_path, ["", good, "", "", ""], max_attempts=1)  # C and D loop, even alone
+    out, rep = choose(c, [task(x) for x in "ABCD"], batch_size=4, max_requests=10)
+    assert rep["split"] >= 1 and rep["failed"] >= 1
+    assert set(out) == {"A", "B"}  # the first half answered; the second half looped alone
+    assert len(f.prompts) == 5  # whole, A+B, C+D, C, D
+
+
+def test_legacy_whole_reply_cache_is_split_into_task_entries(tmp_path: Path) -> None:
+    from scgraph.symbols.select import ingest_legacy, task_key
+
+    ans = json.dumps({"results": [{"task": "T1", "choice": "C1"}, {"task": "T2", "choice": "C2"}]})
+    c, _ = client(tmp_path, [ans])
+    tasks = [task("A"), task("B")]
+    choose(c, tasks, batch_size=2)
+    for t in tasks:  # forget the per-task entries; only the old whole-reply cache remains
+        c._task_path(task_key(t)).unlink()
+    assert ingest_legacy(c) == 2
+    out, rep = choose(c, [tasks[1], tasks[0]], batch_size=1)
+    assert rep["requests"] == 0 and out["B"].symbol == "B.pkg.other2"

@@ -1,0 +1,14 @@
+{
+ "file": "pypi.jsonl",
+ "count": 536,
+ "sha256": "9042e486fcb3d4aea876b3c7f12d7bf47e028c1ae37327083200ff27d0a351c4",
+ "generator": "scripts/symbols/build_dataset.py",
+ "methods": [
+  "fix-diff",
+  "fix-diff+llm",
+  "search+llm"
+ ],
+ "ecosystems": [
+  "PyPI"
+ ]
+}

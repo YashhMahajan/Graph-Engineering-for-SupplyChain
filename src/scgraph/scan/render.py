@@ -79,7 +79,10 @@ _REACH_TEXT = {
 
 def _reach(f: Finding) -> str:
     text = _REACH_TEXT[f.reachability]
-    return f"{text} (inferred)" if f.symbols_source == "inferred" else text
+    if f.symbols_source != "inferred":
+        return text
+    hops = f", {f.reach_hops} hops" if f.reach_hops > 1 else ""
+    return f"{text} (inferred{hops})"
 
 
 def _signal_bits(f: Finding) -> str:

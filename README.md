@@ -21,7 +21,7 @@ calls are used to build the graph.
 
 ## At a glance
 
-**82.8M edges, 8 ecosystems, zero LLM calls to build the graph.** Every alert carries its dependency path as proof; everything else is an explicit, reasoned abstention. **New in 1.2:** `scgraph scan` brings the same engine to your lockfiles, and `scgraph check` guards installs by people and AI agents.
+**82.8M edges, 8 ecosystems, zero LLM calls to build the graph, zero at scan time.** Every alert carries its dependency path as proof; everything else is an explicit, reasoned abstention. `scgraph scan` brings the same engine to your lockfiles, `scgraph check` guards installs by people and AI agents, and **new:** it now answers *does my code call the vulnerable function?* for Python and npm, which advisories almost never say.
 
 Measured with `make bench` on 2M versions and 8M edges. Details: [`docs/performance.md`](docs/performance.md).
 
@@ -35,6 +35,35 @@ Measured with `make bench` on 2M versions and 8M edges. Details: [`docs/performa
 > **How I did it:** I removed every pickled array and kept strings as one UTF-8 block
 > plus offsets, so the store opens with memory maps and no code runs. I then replaced
 > each per-row Python loop on the build and load paths with one NumPy or Arrow operation.
+
+### New: does your code call the vulnerable function?
+
+`govulncheck` can say "you never call it" because Go advisories name the function. PyPI and
+npm advisories do not (0% name it in the OSV snapshot used here). scgraph now **recovers the
+function from the fix commit and the released source at build time**, verifies it, follows it
+through the dependency path, and ships a data file that a scan reads offline.
+Details and every limit: [`docs/symbols.md`](docs/symbols.md). Numbers: [`results/metrics/`](results/metrics).
+
+| Measured on | Before | After |
+|---|---|---|
+| **Alerts on a real project with a vulnerable transitive dependency** (`requests 2.25.0` -> `urllib3`, 20 alerts) | 0 of 20 answered | **12 of 20**: 8 reachable and 4 not called when the code uses `requests`; 12 not called when it only declares it |
+| Advisories with a named vulnerable function, PyPI and npm | 0% | **837 verified records** (536 PyPI, 301 npm) for 165 of the most-downloaded packages, each with its evidence |
+| Vulnerable function ranked first, 188 held-out Go advisories | 58.5% (largest change) | **69.7%** model-free, 70.7% with an LLM on the uncertain ones |
+| Functions that really ran in a dependency, reached by the transitive analysis (501 functions, `requests` and `flask` under a profiler) | 57.1% | **95.4%** |
+| No fix link: function found by search, 48 held-out Go advisories | 27.1% (text search) | **43.8%** with the release diff, 52.1% with an LLM |
+| LLM calls per scan | | **0** |
+| Free-tier LLM requests spent to answer 204 advisories | | **47** (4.3 answers per request, 9 lost to model loops and recovered by splitting; answers are cached per advisory, never repaid) |
+
+> **How I did it:** the fix commit gives the changed functions and their callers; a
+> model-free ranker orders them; a verifier accepts a symbol only if released source supports
+> it (present in the affected version, removed, changed or calling something changed in the
+> fixed one). An LLM is used only where the ranker is unsure, only to pick an id from a list
+> the code built, and it must quote its evidence. The transitive step walks the call graph
+> backwards through each package's released source, and an ablation shows what each of five
+> mechanisms buys (import-time code alone is 17.8 points of recall). The costs are in the
+> docs too: the analysis marks 81% of a dependency's functions reachable, a learned ranker did
+> not beat the hand-set weights, and the LLM's gain on the small free-tier sample is not
+> statistically significant.
 
 ---
 
@@ -100,24 +129,19 @@ is blocked, and asks you when it gets a warning. If a lookup fails, the result i
 
 ### Know whether you call the vulnerable function
 
-`govulncheck` can say "your code does not call it" because Go advisories name the vulnerable
-function. PyPI, Maven and Cargo advisories almost never do. **New:** `scgraph.symbols`
-recovers the function at build time from the fix commit (or, with no fix link, by searching
-the affected release), verifies it against released source, adds the public entry points
-that reach it, and ships the result as a data file. `scgraph scan --reachability` reads that
-file offline: **still zero model calls at scan time.**
-
 ```bash
-scgraph symbols infer GHSA-j8r2-6x86-q33q   # requests: rebuild_proxies, verified, + entry points
-scgraph scan . --reachability               # "vulnerable function called (inferred)"
+pipx install "scgraph-cli[symbols-js]"      # the extra adds npm and TypeScript
+scgraph scan . --reachability               # direct dependencies, Python and npm
+scgraph scan . --deep                       # + transitive Python dependencies (downloads sources once)
+scgraph symbols infer GHSA-35jh-r3h4-6jhm   # lodash: template, verified, entry points lodash.template
 ```
 
-An LLM is used only where the model-free ranker is unsure, and only to pick an id from a
-list the code built; it must quote its evidence, and its pick still has to pass the verifier.
-On 188 held-out Go advisories (temporal split), the model-free ranker puts a labelled
-vulnerable symbol first **69.7%** of the time (baseline 58.5%); with the LLM on the uncertain
-ones, **72.3%**. A trained ranker did not beat the hand-set weights, and that is reported too.
-Details, the free-tier LLM client and every limit: [`docs/symbols.md`](docs/symbols.md).
+On a project that pins `requests 2.25.0`, `--deep` follows `app -> requests -> urllib3` through
+released source and labels each alert, for example
+`vulnerable function called (inferred, 2 hops)`. It never suppresses an alert or changes the
+exit code: `not_called` means *no reference found*, an ordering for the queue, not a pass.
+Dataset, evaluation, ablation and limits: [`docs/symbols.md`](docs/symbols.md); usage:
+[`docs/scan.md`](docs/scan.md); the notebook's Part XI shows it step by step.
 
 ---
 

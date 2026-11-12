@@ -41,14 +41,23 @@ __all__ = [
     "LLMError",
     "OpenRouter",
     "Reply",
+    "default_models",
     "extract_json",
     "load_env",
 ]
 
-DEFAULT_MODELS = (
-    "thinkingmachines/inkling-2-small:free",
-    "baidu/ernie-5.5-flash-preview:free",
-)
+# `thinkingmachines/inkling-2-small:free` answers HTTP 403 ("only available on agentic
+# harnesses") to an ordinary API key, so it is not a default. Add any free model to the
+# waterfall with SCGRAPH_LLM_MODELS="model-a:free,model-b:free"; the order is the fallback order.
+DEFAULT_MODELS = ("baidu/ernie-5.5-flash-preview:free",)
+
+
+def default_models() -> tuple[str, ...]:
+    env = os.environ.get("SCGRAPH_LLM_MODELS", "")
+    models = tuple(m.strip() for m in env.split(",") if m.strip())
+    return models or DEFAULT_MODELS
+
+
 API = "https://openrouter.ai/api/v1"
 PROMPT_VERSION = "1"
 # attempts that reached a model and so may use the free-tier quota (refusals and rate limits
@@ -133,7 +142,7 @@ def _today(ts: float) -> str:
 class OpenRouter:
     def __init__(
         self,
-        models: Sequence[str] = DEFAULT_MODELS,
+        models: Sequence[str] | None = None,
         api_key: str | None = None,
         root: Path | None = None,
         daily_limit: int = 50,
@@ -154,7 +163,7 @@ class OpenRouter:
             load_env()
             api_key = os.environ.get("OPENROUTER_API_KEY", "")
         self.api_key = api_key
-        self.models = list(models)
+        self.models = list(models) if models else list(default_models())
         self.root = (root or cache_dir()) / "llm"
         self.root.mkdir(parents=True, exist_ok=True)
         self.daily_limit = daily_limit
@@ -264,6 +273,25 @@ class OpenRouter:
             return None
         d = json.loads(p.read_text(encoding="utf-8"))
         return Reply(d["content"], d["parsed"], d["model"], True, h)
+
+    # ------------------------------------------------------------ per-task cache
+    def _task_path(self, key: str) -> Path:
+        return self.root / "tasks" / key[:2] / f"{key}.json"
+
+    def task_get(self, key: str) -> dict | None:
+        """An answer stored for one task, whatever batch it was asked in."""
+        p = self._task_path(key)
+        if not p.exists():
+            return None
+        try:
+            return json.loads(p.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return None
+
+    def task_put(self, key: str, value: dict) -> None:
+        p = self._task_path(key)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps(value, ensure_ascii=False), encoding="utf-8")
 
     # ------------------------------------------------------------------ models
     def _capabilities(self) -> dict[str, set[str]]:

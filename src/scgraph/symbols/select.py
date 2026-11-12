@@ -10,8 +10,10 @@ size allows, and a task the model skipped is retried in a later request, not the
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
+from collections import deque
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any
@@ -196,37 +198,125 @@ def _batches(tasks: Sequence[Task], size: int, max_chars: int) -> list[list[Task
     return out
 
 
+SYSTEM_SIG = hashlib.sha256(SYSTEM.encode()).hexdigest()[:12]
+_SECTION = re.compile(r"(?m)^(?=### Task T\d+ )")
+_HEAD = re.compile(r"^### Task T\d+ ")
+
+
+def task_key(t: Task) -> str:
+    """Identity of one task's prompt text, independent of the batch it is sent in."""
+    return hashlib.sha256(f"{SYSTEM_SIG}\n{render_task(0, t)}".encode()).hexdigest()
+
+
+def _remember(
+    client: OpenRouter, batch: Sequence[Task], parsed: dict, got: dict, model: str, h: str
+):
+    for r in parsed.get("results", []):
+        tid = r.get("task") if isinstance(r, dict) else None
+        if isinstance(tid, str) and tid[1:].isdigit() and 0 < int(tid[1:]) <= len(batch):
+            t = batch[int(tid[1:]) - 1]
+            if t.tid in got:
+                raw = {k: v for k, v in r.items() if k != "task"}
+                client.task_put(task_key(t), {"raw": raw, "model": model, "prompt_hash": h})
+
+
+def _from_cache(t: Task, entry: dict) -> Choice | None:
+    try:
+        raw = {**entry["raw"], "task": "T1"}
+        return _parse([t], {"results": [raw]}, entry["model"], entry["prompt_hash"], True).get(
+            t.tid
+        )
+    except (KeyError, TypeError):
+        return None
+
+
+def ingest_legacy(client: OpenRouter) -> int:
+    """Split whole-reply cache entries into per-task entries, so answers paid for under one
+    batching are reused under any other. Only replies to the current system prompt count."""
+    n = 0
+    root = client.root / "cache"
+    if not root.exists():
+        return 0
+    for f in root.glob("*/*.json"):
+        try:
+            d = json.loads(f.read_text(encoding="utf-8"))
+            msgs = d["messages"]
+            if d.get("kind") != "select" or msgs[0]["content"] != SYSTEM:
+                continue
+            sections = [x for x in _SECTION.split(msgs[1]["content"]) if x.startswith("### Task T")]
+            for r in d["parsed"].get("results", []):
+                tid = r.get("task")
+                if not (isinstance(tid, str) and tid[1:].isdigit()):
+                    continue
+                k = int(tid[1:]) - 1
+                if not 0 <= k < len(sections) or r.get("choice") is None:
+                    continue
+                text = _HEAD.sub("### Task T0 ", sections[k].rstrip("\n"), count=1)
+                key = hashlib.sha256(f"{SYSTEM_SIG}\n{text}".encode()).hexdigest()
+                if client.task_get(key) is None:
+                    raw = {a: b for a, b in r.items() if a != "task"}
+                    client.task_put(key, {"raw": raw, "model": d["model"], "prompt_hash": f.stem})
+                    n += 1
+        except (OSError, KeyError, IndexError, TypeError, json.JSONDecodeError):
+            continue
+    return n
+
+
 def choose(
     client: OpenRouter,
     tasks: Sequence[Task],
-    batch_size: int = 10,
-    max_chars: int = 60_000,
+    batch_size: int = 6,
+    max_chars: int = 40_000,
     max_requests: int | None = None,
     retry_missing: bool = True,
     log=None,
 ) -> tuple[dict[str, Choice], dict]:
     """Choices for as many tasks as the budget allows, and a report of what was spent.
-    Stops cleanly (keeping every answer so far) when the budget runs out."""
+
+    Order of spending: the per-task cache first (free), then batches of the tasks still open.
+    A batch that fails (a reasoning loop, a timeout) is split in half and retried, so one bad
+    task costs a few requests and not the whole batch. A single task that fails alone is
+    dropped for this run. Stops cleanly, keeping every answer, at the request cap or the
+    daily budget; the budget is checked before every request."""
     todo = [t for t in tasks if t.options]
+    if not getattr(client, "_legacy_done", False):  # reuse replies cached under old batching
+        ingest_legacy(client)
+        client._legacy_done = True  # type: ignore[attr-defined]
     out: dict[str, Choice] = {}
     report: dict[str, Any] = {
         "requests": 0,
         "cached": 0,
+        "task_cache_hits": 0,
         "tasks": len(todo),
         "answered": 0,
+        "failed": 0,
+        "split": 0,
         "stopped": "",
     }
-    passes = 2 if retry_missing else 1
-    for _ in range(passes):
-        pending = [t for t in todo if t.tid not in out]
+    for t in todo:
+        entry = client.task_get(task_key(t))
+        ch = _from_cache(t, entry) if entry else None
+        if ch is not None:
+            out[t.tid] = ch
+            report["task_cache_hits"] += 1
+    used0 = client.used_today()
+    dead: set[str] = set()
+
+    def spent() -> int:
+        return client.used_today() - used0
+
+    for _ in range(2 if retry_missing else 1):
+        pending = [t for t in todo if t.tid not in out and t.tid not in dead]
         if not pending:
             break
-        for batch in _batches(pending, batch_size, max_chars):
+        queue = deque(_batches(pending, batch_size, max_chars))
+        while queue:
+            batch = queue.popleft()
             msgs = messages_for(batch)
             if (
                 client.cached("select", msgs) is None
                 and max_requests is not None
-                and (report["requests"] >= max_requests)
+                and spent() >= max_requests
             ):
                 report["stopped"] = "max_requests"
                 break
@@ -238,27 +328,38 @@ def choose(
                 report["stopped"] = f"budget: {e}"
                 break
             except LLMError as e:
-                report["requests"] += 1
-                report["failed"] = report.get("failed", 0) + 1
+                if client.offline:  # cache-only replay: skip what was never answered
+                    continue
+                report["failed"] += 1
                 if log:
                     log(f"batch of {len(batch)} failed: {e}")
-                if client.offline:  # cache-only replay: skip what was never answered
-                    report["requests"] -= 1
-                    continue
                 attempts = getattr(e, "attempts", None)
                 if attempts is None or all(
                     a["status"] in ("unavailable", "auth") for a in attempts
                 ):
                     report["stopped"] = f"no usable model: {e}"
                     break
+                if len(batch) > 1:
+                    mid = len(batch) // 2
+                    queue.appendleft(batch[mid:])
+                    queue.appendleft(batch[:mid])
+                    report["split"] += 1
+                else:
+                    dead.add(batch[0].tid)
                 continue
             report["cached" if reply.cached else "requests"] += 1
             got = _parse(batch, reply.parsed, reply.model, reply.prompt_hash, reply.cached)
+            _remember(client, batch, reply.parsed, got, reply.model, reply.prompt_hash)
             out.update(got)
             if log:
-                log(f"{'cache' if reply.cached else reply.model}: {len(got)}/{len(batch)} answered")
+                left = client.remaining(remote=False)
+                log(
+                    f"{'cache' if reply.cached else reply.model}: {len(got)}/{len(batch)} "
+                    f"answered, {left} requests left today"
+                )
         if report["stopped"]:
             break
+    report["requests"] = spent()
     report["answered"] = len(out)
     return out, report
 

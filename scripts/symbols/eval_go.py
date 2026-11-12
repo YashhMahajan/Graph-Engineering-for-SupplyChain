@@ -228,6 +228,7 @@ def main() -> int:
             sample[: a.engine_b],
             llm_requests=a.engine_b_llm_requests,
             log=lambda m: print(m, file=sys.stderr),
+            cache_only=a.llm_cache_only,
         )
 
     report["stages"] = stages

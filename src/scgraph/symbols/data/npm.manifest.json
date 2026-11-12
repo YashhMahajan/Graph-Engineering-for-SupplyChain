@@ -1,0 +1,13 @@
+{
+ "file": "npm.jsonl",
+ "count": 301,
+ "sha256": "b7916122b626a6eaa185ff3a87b65c3929055312bbd97b8f5f26ba623ea18d07",
+ "generator": "scripts/symbols/build_dataset.py",
+ "methods": [
+  "fix-diff",
+  "fix-diff+llm"
+ ],
+ "ecosystems": [
+  "npm"
+ ]
+}

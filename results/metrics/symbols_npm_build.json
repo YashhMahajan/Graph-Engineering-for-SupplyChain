@@ -1,0 +1,52 @@
+{
+ "ecosystem": "npm",
+ "generated": "2026-11-12",
+ "selected": 460,
+ "selected_with_fix_link": 400,
+ "packages": 89,
+ "prepared": {
+  "fix": 357,
+  "search": 96,
+  "none": 7
+ },
+ "records": 301,
+ "by_method": {
+  "fix-diff+llm": 11,
+  "fix-diff": 290
+ },
+ "verifier": {
+  "verified": 301
+ },
+ "abstained": {
+  "search: not confirmed by the LLM": 60,
+  "fix: no candidate verified": 56,
+  "search: no candidate verified": 36,
+  "no GitHub fix commit or pull request linked": 5,
+  "the fix changes no function (module-level code only)": 2
+ },
+ "with_entry_points": 229,
+ "llm": {
+  "requests": 4,
+  "cached": 0,
+  "task_cache_hits": 0,
+  "tasks": 287,
+  "answered": 12,
+  "failed": 1,
+  "split": 1,
+  "stopped": "max_requests"
+ },
+ "search_needs_llm": true,
+ "manifest": {
+  "file": "npm.jsonl",
+  "count": 301,
+  "sha256": "b7916122b626a6eaa185ff3a87b65c3929055312bbd97b8f5f26ba623ea18d07",
+  "generator": "scripts/symbols/build_dataset.py",
+  "methods": [
+   "fix-diff",
+   "fix-diff+llm"
+  ],
+  "ecosystems": [
+   "npm"
+  ]
+ }
+}

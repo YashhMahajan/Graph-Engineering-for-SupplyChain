@@ -14,15 +14,19 @@ import os
 import re
 import threading
 import time
+from collections import OrderedDict
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
 import requests
 
 from .diff import FileDiff, parse_unified
 
 __all__ = ["Fetcher", "Fix", "FixRef", "cache_dir", "fix_refs", "get_fix"]
+
+T = TypeVar("T")
 
 _UA = "scgraph-symbols/1.0 (+https://pypi.org/project/scgraph-cli/)"
 
@@ -51,6 +55,22 @@ class Fetcher:
         self.offline = offline
         self.requests_made = 0
         self._lock = threading.Lock()
+        self._memo: OrderedDict[Any, Any] = OrderedDict()
+        self._memo_lock = threading.Lock()
+
+    def memo(self, key: Any, make: Callable[[], T], size: int = 48) -> T:
+        """``make()`` once per ``key``, keeping the last ``size`` results (parsed releases are
+        shared by every advisory of the same package version)."""
+        with self._memo_lock:
+            if key in self._memo:
+                self._memo.move_to_end(key)
+                return self._memo[key]
+        value = make()
+        with self._memo_lock:
+            self._memo[key] = value
+            while len(self._memo) > size:
+                self._memo.popitem(last=False)
+        return value
 
     def _path(self, url: str) -> Path:
         h = hashlib.sha256(url.encode()).hexdigest()

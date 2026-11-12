@@ -105,7 +105,9 @@ def search(
     return hits[:k], {"functions": len(idx.items), "release_diff": n_changed, "query_terms": len(q)}
 
 
-def engine_b_eval(sample: list[dict], llm_requests: int = 0, k: int = 8, log=None) -> dict:
+def engine_b_eval(
+    sample: list[dict], llm_requests: int = 0, k: int = 8, log=None, cache_only: bool = False
+) -> dict:
     """Engine B on Go advisories as if no fix link existed (the cache must hold releases)."""
     from .evaluate import match, metrics
     from .fetch import Fetcher
@@ -134,7 +136,7 @@ def engine_b_eval(sample: list[dict], llm_requests: int = 0, k: int = 8, log=Non
         "bm25": metrics(bm25_only, golds).as_dict(),
         "bm25+release_diff": metrics(combined, golds).as_dict(),
     }
-    if llm_requests > 0:
+    if llm_requests > 0 or cache_only:
         from .llm import OpenRouter
         from .select import Option, Task, choose
 
@@ -156,10 +158,10 @@ def engine_b_eval(sample: list[dict], llm_requests: int = 0, k: int = 8, log=Non
                 Task(x["id"], x["module"], advisory_text(x["record"]), opts, mode="search")
             )
         choices, rep = choose(
-            OpenRouter(),
+            OpenRouter(offline=cache_only),
             tasks,
             batch_size=8,
-            max_requests=llm_requests,
+            max_requests=llm_requests or None,
             log=log or (lambda m: print(m, file=sys.stderr)),
         )
         reranked = []

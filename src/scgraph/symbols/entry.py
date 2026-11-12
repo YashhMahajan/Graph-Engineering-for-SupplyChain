@@ -21,6 +21,7 @@ import ast
 import re
 from collections import deque
 
+from .features import ON
 from .source import Release
 
 __all__ = ["aliases", "entry_points"]
@@ -85,6 +86,9 @@ _COMMON = frozenset(
 def _imports_target(text: str, target_module: str, lang: str) -> bool:
     if lang == "go":
         return f'"{target_module}"' in text
+    if lang == "javascript":
+        leaf = re.escape(target_module.rsplit("/", 1)[-1])
+        return re.search(rf"""['"][^'"\n]*\b{leaf}['"]""", text) is not None
     leaf = target_module.rsplit(".", 1)[-1]
     return re.search(rf"^\s*(from|import)\s+[\w.]*\b{re.escape(leaf)}\b", text, re.M) is not None
 
@@ -96,51 +100,66 @@ def _imports_name(text: str, target_module: str, name: str) -> bool:
     return re.search(pat, text, re.M) is not None
 
 
-def entry_points(
-    release: Release, module: str, qualname: str, depth: int = 5, cap: int = 60
+def climb(
+    release: Release,
+    starts: list[tuple[str, str]],
+    depth: int = 5,
+    cap: int = 60,
 ) -> list[tuple[str, str]]:
-    """(module, qualname) of public functions within ``depth`` calls of the target,
-    nearest first. The target itself comes first when it is public."""
-    funcs = release.functions()
-    by_name: dict[str, list[tuple[str, str, object]]] = {}
-    for mod, path, f in funcs:
-        for c in f.calls:
-            by_name.setdefault(c, []).append((mod, path, f))
-    target = release.find(module, qualname)
+    """(module, qualname) of public functions within ``depth`` calls above any of ``starts``,
+    nearest first. A start that is itself public comes first. A method that runs implicitly
+    (a dunder, a property) is reached through its class's name as well: ``Cls(...)``."""
+    by_name = release.callers_by_name()
     out: list[tuple[str, str]] = []
-    seen: set[tuple[str, str]] = {(module, qualname)}
-    if target is not None and target.public:
-        out.append((module, qualname))
-    q: deque[tuple[str, str, int]] = deque([(module, qualname, 0)])
+    seen: set[tuple[str, str]] = set(starts)
+    for mod, qn in starts:
+        target = release.find_any(mod, qn)
+        if target is not None and target.public and (mod, qn) not in out:
+            out.append((mod, qn))
+    q: deque[tuple[str, str, int]] = deque((m, qn, 0) for m, qn in starts)
     while q and len(out) < cap:
         mod, qn, d = q.popleft()
         if d >= depth:
             continue
-        name = qn.rsplit(".", 1)[-1]
-        for cmod, cpath, cf in by_name.get(name, []):
-            key = (cmod, cf.qualname)  # type: ignore[attr-defined]
-            if key in seen:
-                continue
-            same = cmod == mod
-            text = release.files.get(cpath, "")
-            exact = release.lang == "python" and _imports_name(text, mod, name)
-            if (
-                not same
-                and not exact
-                and (
-                    name in _COMMON
-                    or len(name) <= 3
-                    or not _imports_target(text, mod, release.lang)
-                )
-            ):
-                continue
-            seen.add(key)
-            if cf.public:  # type: ignore[attr-defined]
-                out.append(key)
-                if len(out) >= cap:
-                    break
-            q.append((cmod, cf.qualname, d + 1))  # type: ignore[attr-defined]
+        f0 = release.find_any(mod, qn)
+        names = {qn.rsplit(".", 1)[-1]}
+        if ON["implicit"] and f0 is not None and f0.implicit and f0.owner:
+            names.add(f0.owner.rsplit(".", 1)[-1])
+        for name in names:
+            for cmod, cpath, cf in by_name.get(name, []):
+                key = (cmod, cf.qualname)
+                if key in seen:
+                    continue
+                same = cmod == mod
+                text = release.files.get(cpath, "")
+                exact = release.lang == "python" and _imports_name(text, mod, name)
+                if (
+                    not same
+                    and not exact
+                    and (
+                        name in _COMMON
+                        or len(name) <= 3
+                        or not _imports_target(text, mod, release.lang)
+                    )
+                ):
+                    continue
+                seen.add(key)
+                if cf.public:
+                    out.append(key)
+                    if len(out) >= cap:
+                        break
+                q.append((cmod, cf.qualname, d + 1))
+            if len(out) >= cap:
+                break
     return out
+
+
+def entry_points(
+    release: Release, module: str, qualname: str, depth: int = 5, cap: int = 60
+) -> list[tuple[str, str]]:
+    """Public functions within ``depth`` calls of one target, nearest first (the target
+    itself first when it is public)."""
+    return climb(release, [(module, qualname)], depth, cap)
 
 
 def aliases(release: Release) -> dict[str, set[str]]:
@@ -175,7 +194,12 @@ def aliases(release: Release) -> dict[str, set[str]]:
 
 
 def dotted_names(release: Release, pairs: list[tuple[str, str]]) -> list[str]:
-    """Dotted names for (module, qualname) pairs, re-export aliases included (Python)."""
+    """Dotted names for (module, qualname) pairs, re-export aliases included (Python); export
+    names and deep import paths (npm)."""
+    if release.lang == "javascript":
+        from .npm import npm_names
+
+        return npm_names(release, pairs)
     al = aliases(release)
     out: list[str] = []
     for mod, qn in pairs:

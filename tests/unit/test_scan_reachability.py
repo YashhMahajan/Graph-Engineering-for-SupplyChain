@@ -52,7 +52,8 @@ def test_classify_gives_one_verdict_per_situation() -> None:
     assert classify("PyPI", direct, syms, {"yaml.safe_load"}) == "not_called"
     assert classify("PyPI", direct, [], {"yaml.load"}) == "not_analyzed"  # advisory lists none
     assert classify("PyPI", ["app", "web@1", "pyyaml@5.3"], syms, {"yaml.load"}) == "not_analyzed"
-    assert classify("npm", direct, syms, {"yaml.load"}) == "not_analyzed"
+    assert classify("npm", direct, syms, {"yaml.load"}) == "reachable"  # npm is analysed too
+    assert classify("crates.io", direct, syms, {"yaml.load"}) == "not_analyzed"
     assert classify("PyPI", None, syms, {"yaml.load"}) == "not_analyzed"
 
 
