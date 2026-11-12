@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -91,7 +92,8 @@ def test_signature_round_trip_and_tamper_detection(tmp_path: Path) -> None:
     write([REC], data)
     priv, pub = tmp_path / "k.key", tmp_path / "k.pub"
     signing.generate_key(priv, pub)
-    assert oct(priv.stat().st_mode)[-3:] == "600"
+    if os.name == "posix":  # Windows has no Unix file modes
+        assert oct(priv.stat().st_mode)[-3:] == "600"
     with pytest.raises(signing.SigningError, match="refusing"):
         signing.generate_key(priv, pub)  # a key is never replaced
     signing.sign(data, priv)
