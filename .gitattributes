@@ -27,3 +27,6 @@ Makefile text eol=lf
 
 # Committed result files should not skew language stats.
 results/** linguist-generated
+
+# shipped symbol datasets are signed: Git must not change their bytes
+src/scgraph/symbols/data/* -text

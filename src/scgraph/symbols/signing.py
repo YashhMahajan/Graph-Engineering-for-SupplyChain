@@ -56,6 +56,11 @@ def generate_key(private_path: Path, public_path: Path) -> None:
     )
 
 
+def _lf(b: bytes) -> bytes:
+    """Line endings as written. A Windows checkout may have changed them; the meaning has not."""
+    return b.replace(b"\r\n", b"\n")
+
+
 def _sig_path(data: Path) -> Path:
     return data.parent / f"{data.stem}.manifest.sig"
 
@@ -67,7 +72,7 @@ def sign(data: Path, private_path: Path) -> Path:
     if not manifest.exists():
         raise SigningError(f"{manifest} is missing; write the dataset first")
     key = ser.load_pem_private_key(private_path.read_bytes(), password=None)
-    sig = key.sign(manifest.read_bytes())
+    sig = key.sign(_lf(manifest.read_bytes()))
     out = _sig_path(data)
     out.write_text(base64.b64encode(sig).decode() + "\n", encoding="utf-8")
     return out
@@ -83,11 +88,11 @@ def verify(data: Path, public_path: Path) -> None:
             raise SigningError(f"{p} is missing")
     pub = ser.load_pem_public_key(public_path.read_bytes())
     try:
-        pub.verify(base64.b64decode(sig.read_text().strip()), manifest.read_bytes())
+        pub.verify(base64.b64decode(sig.read_text().strip()), _lf(manifest.read_bytes()))
     except bad as e:
         raise SigningError(f"{sig.name}: the signature does not match the manifest") from e
     import json
 
     want = json.loads(manifest.read_text()).get("sha256")
-    if want != hashlib.sha256(data.read_bytes()).hexdigest():
+    if want != hashlib.sha256(_lf(data.read_bytes())).hexdigest():
         raise SigningError(f"{data.name}: the data does not match its signed manifest")
