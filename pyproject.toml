@@ -60,7 +60,7 @@ gpu = [
 ]
 # Vulnerable-symbol inference and reachability for npm (JavaScript parsing). Python and Go
 # need nothing extra.
-symbols-js = ["tree-sitter>=0.23", "tree-sitter-javascript>=0.23"]
+symbols-js = ["tree-sitter>=0.23", "tree-sitter-javascript>=0.23", "tree-sitter-typescript>=0.23"]
 # Large-scale graph algorithms (k-core / components / betweenness at 100M-node scale).
 fast = ["igraph>=0.11"]
 # Running and regenerating the notebook.
@@ -165,7 +165,7 @@ check_untyped_defs = true
 module = [
     "duckdb.*", "pyarrow.*", "sklearn.*", "scipy.*", "igraph.*",
     "torch.*", "transformers.*", "sentence_transformers.*", "matplotlib.*",
-    "tree_sitter.*", "tree_sitter_javascript.*",
+    "tree_sitter.*", "tree_sitter_javascript.*", "tree_sitter_typescript.*",
 ]
 ignore_missing_imports = true
 
