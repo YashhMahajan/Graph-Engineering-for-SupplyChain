@@ -26,7 +26,7 @@ def write(records: Iterable[dict], path: Path, generator: str = "") -> dict:
     rows = sorted(records, key=lambda r: r["id"])
     text = "".join(json.dumps(r, sort_keys=True, ensure_ascii=False) + "\n" for r in rows)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
+    path.write_bytes(text.encode("utf-8"))  # "\n" on every platform: the hash must not move
     manifest = {
         "file": path.name,
         "count": len(rows),
@@ -35,7 +35,9 @@ def write(records: Iterable[dict], path: Path, generator: str = "") -> dict:
         "methods": sorted({r.get("method", "") for r in rows}),
         "ecosystems": sorted({r.get("ecosystem", "") for r in rows}),
     }
-    (path.parent / f"{path.stem}.manifest.json").write_text(json.dumps(manifest, indent=1) + "\n")
+    (path.parent / f"{path.stem}.manifest.json").write_bytes(
+        (json.dumps(manifest, indent=1) + "\n").encode("utf-8")
+    )
     return manifest
 
 

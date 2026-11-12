@@ -61,6 +61,8 @@ gpu = [
 # Vulnerable-symbol inference and reachability for npm (JavaScript parsing). Python and Go
 # need nothing extra.
 symbols-js = ["tree-sitter>=0.23", "tree-sitter-javascript>=0.23", "tree-sitter-typescript>=0.23"]
+# Signing and verifying the shipped symbol datasets (Ed25519).
+sign = ["cryptography>=42"]
 # Large-scale graph algorithms (k-core / components / betweenness at 100M-node scale).
 fast = ["igraph>=0.11"]
 # Running and regenerating the notebook.
@@ -72,7 +74,7 @@ notebook = [
     "matplotlib>=3.9",
 ]
 dev = [
-    "scgraph-cli[notebook,symbols-js]",
+    "scgraph-cli[notebook,symbols-js,sign]",
     "ruff>=0.6",
     "mypy>=1.11",
     "pytest>=8.3",
@@ -83,7 +85,7 @@ dev = [
     "types-tqdm",
 ]
 docs = ["mkdocs>=1.6", "mkdocs-material>=9.5", "mkdocstrings[python]>=0.26"]
-all = ["scgraph-cli[gpu,fast,symbols-js,notebook,dev,docs]"]
+all = ["scgraph-cli[gpu,fast,symbols-js,sign,notebook,dev,docs]"]
 
 [project.urls]
 Documentation = "https://github.com/YashhMahajan/Graph-Engineering-for-SupplyChain/tree/main/docs"
@@ -165,7 +167,7 @@ check_untyped_defs = true
 module = [
     "duckdb.*", "pyarrow.*", "sklearn.*", "scipy.*", "igraph.*",
     "torch.*", "transformers.*", "sentence_transformers.*", "matplotlib.*",
-    "tree_sitter.*", "tree_sitter_javascript.*", "tree_sitter_typescript.*",
+    "tree_sitter.*", "tree_sitter_javascript.*", "tree_sitter_typescript.*", "cryptography.*",
 ]
 ignore_missing_imports = true
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from pathlib import Path
 
 from .fetch import Fetcher
 
@@ -105,6 +106,75 @@ def _budget(a: argparse.Namespace) -> int:
     return 0
 
 
+def _ledger(a: argparse.Namespace) -> int:
+    from . import claims
+    from .dataset import load
+
+    ledger = claims.open_claims(a.dir)
+    if a.advisory:
+        rows, receipt = claims.claims_for(ledger, a.advisory)
+        print(json.dumps({"claims": rows, "receipt": receipt.to_json()}, indent=1))
+        return 0 if rows else 1
+    idx = load()
+    counts = claims.record_claims(ledger, idx.rows)
+    print(f"{counts}; {ledger.verify()} changes in the chain, all verified")
+    return 0
+
+
+def _paths(a: argparse.Namespace):
+    from importlib import resources
+
+    key = Path(a.key) if getattr(a, "key", None) else None
+    data = Path(str(resources.files("scgraph.symbols").joinpath("data")))
+    return key, data
+
+
+def _keygen(a: argparse.Namespace) -> int:
+    from . import signing
+
+    key, data = _paths(a)
+    key = key or signing.default_key_path()
+    signing.generate_key(key, data / "signing.pub")
+    print(
+        f"private key: {key} (keep it safe, never commit it)\npublic key:  {data / 'signing.pub'}"
+    )
+    return 0
+
+
+def _sign(a: argparse.Namespace) -> int:
+    from . import signing
+
+    key, data = _paths(a)
+    for f in sorted(data.glob("*.jsonl")):
+        print("signed", signing.sign(f, key or signing.default_key_path()))
+    return 0
+
+
+def _verify(a: argparse.Namespace) -> int:
+    from . import signing
+
+    _, data = _paths(a)
+    pub = Path(a.pubkey) if a.pubkey else data / "signing.pub"
+    bad = 0
+    for f in sorted(data.glob("*.jsonl")):
+        try:
+            signing.verify(f, pub)
+            print(f"ok   {f.name}")
+        except signing.SigningError as e:
+            bad += 1
+            print(f"FAIL {e}")
+    return 1 if bad else 0
+
+
+def _export(a: argparse.Namespace) -> int:
+    from .export import bundle
+
+    _, data = _paths(a)
+    files = bundle(data, Path(a.out))
+    print(f"{len(files)} files in {a.out}")
+    return 0
+
+
 def add_parser(sub) -> None:
     s = sub.add_parser("symbols", help="which function does an advisory concern? (build-time)")
     ss = s.add_subparsers(dest="symbols_cmd", required=True)
@@ -119,3 +189,21 @@ def add_parser(sub) -> None:
     w.set_defaults(fn=_show)
     b = ss.add_parser("budget", help="today's free-tier LLM budget")
     b.set_defaults(fn=_budget)
+    lg = ss.add_parser("ledger", help="record the dataset as claims in a hash-chained ledger")
+    lg.add_argument("dir")
+    lg.add_argument("--advisory", help="print the claims for one advisory, with a receipt")
+    lg.set_defaults(fn=_ledger)
+    k = ss.add_parser(
+        "keygen", help="make a signing key pair (the private key stays outside the repo)"
+    )
+    k.add_argument("--key", help="private key path (default: ~/.config/scgraph/signing.key)")
+    k.set_defaults(fn=_keygen)
+    sg = ss.add_parser("sign", help="sign the shipped datasets")
+    sg.add_argument("--key")
+    sg.set_defaults(fn=_sign)
+    vf = ss.add_parser("verify", help="check the signature of the shipped datasets")
+    vf.add_argument("--pubkey")
+    vf.set_defaults(fn=_verify)
+    ex = ss.add_parser("export", help="write the datasets and OSV patches for publication")
+    ex.add_argument("out")
+    ex.set_defaults(fn=_export)
