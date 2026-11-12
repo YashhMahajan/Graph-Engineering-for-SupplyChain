@@ -1,7 +1,8 @@
 """Scan-time glue for transitive reachability: dependency path + inferred symbol -> names.
 
 Needs the released source of every package on the path, so it is online and opt-in
-(``scgraph scan --deep``); each download is cached. No model is involved.
+(``scgraph scan --deep``); each download is cached. It works for PyPI and npm. No model is
+involved.
 """
 
 from __future__ import annotations
@@ -26,10 +27,15 @@ class DeepAnalyzer:
         self.fetcher = fetcher or Fetcher()
         self._releases: dict[tuple[str, str], Release | None] = {}
 
-    def release(self, name: str, version: str) -> Release | None:
+    def release(self, name: str, version: str, ecosystem: str = "PyPI") -> Release | None:
         key = (name, version)
         if key not in self._releases:
-            self._releases[key] = pypi_release(self.fetcher, name, version)
+            if ecosystem == "npm":
+                from .npm import npm_release
+
+                self._releases[key] = npm_release(self.fetcher, name, version)
+            else:
+                self._releases[key] = pypi_release(self.fetcher, name, version)
         return self._releases[key]
 
     def analyze(self, path: list[str], record: dict) -> tuple[Propagation | None, str]:
@@ -43,7 +49,7 @@ class DeepAnalyzer:
         chain: list[Release] = []
         for lab in labels:
             nv = _split(lab)
-            rel = self.release(*nv) if nv else None
+            rel = self.release(*nv, record.get("ecosystem", "PyPI")) if nv else None
             if rel is None:
                 return None, f"released source of {lab} unavailable"
             chain.append(rel)

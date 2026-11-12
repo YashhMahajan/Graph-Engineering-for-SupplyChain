@@ -1,6 +1,7 @@
 # Responsible use
 
-scgraph is a defensive tool. These rules apply to all users and contributors.
+scgraph is a defensive tool. These rules apply to all users and contributors. This page
+follows the ASD-STE100 rules for Simplified Technical English.
 
 ## Use it to protect what you own or maintain
 
@@ -20,6 +21,8 @@ scgraph is a defensive tool. These rules apply to all users and contributors.
   private first.
 - Do not use scgraph output as the only proof that a system is safe. An abstention is
   a reason, not a guarantee.
+- Do not send the OSV patches from `scgraph symbols export` to a third party in a bulk or
+  automatic way. A person must read each patch first.
 
 ## Be a good client of public services
 
@@ -46,6 +49,8 @@ If you publish results, name the sources.
 
 ## Know the limits
 
+- `not_called` means that scgraph found no reference to the vulnerable function. It is not proof.
+  Do not close an alert because of it.
 - A path shows that a vulnerable version is installed. It does not show that the
   vulnerable code runs.
 - The guard can be wrong. A new attack can pass it. A safe package can get a warning.

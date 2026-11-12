@@ -313,8 +313,31 @@ def _tool(name: str, args: dict, deps: dict) -> Any:
                 for a in rec.get("affected") or []
             ][:20],
             "references": [r.get("url") for r in rec.get("references") or []][:10],
+            "vulnerable_function": _vulnerable_function(rec),
         }
     raise KeyError(name)
+
+
+def _vulnerable_function(rec: dict) -> dict | None:
+    """The verified vulnerable function from the shipped dataset, when it has one. The answer
+    carries its evidence, so an agent can quote it. An unreadable dataset gives None."""
+    from ..symbols import dataset
+
+    try:
+        hit = dataset.load().get([rec["id"], *(rec.get("aliases") or [])])
+    except dataset.DatasetError:
+        return None
+    if hit is None:
+        return None
+    ev = hit.get("evidence") or {}
+    return {
+        "package": hit["package"],
+        "symbol": hit["symbol"],
+        "entry_points": hit.get("entry_points", [])[:10],
+        "method": hit["method"],
+        "confidence": hit.get("confidence"),
+        "evidence": ev.get("fix") or "code search of the affected release",
+    }
 
 
 def _default_deps() -> dict:

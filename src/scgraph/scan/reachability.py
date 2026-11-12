@@ -23,11 +23,20 @@ a reason to close an alert.
 from __future__ import annotations
 
 import ast
+import re
 from pathlib import Path
 
 from .lockfiles import _SKIP_DIRS
 
-__all__ = ["classify", "referenced_names", "scan_js", "scan_python", "symbols_of"]
+__all__ = [
+    "classify",
+    "referenced_names",
+    "referenced_names_go",
+    "scan_go",
+    "scan_js",
+    "scan_python",
+    "symbols_of",
+]
 
 _JS_EXT = (".js", ".jsx", ".mjs", ".cjs", ".ts", ".mts", ".cts")
 _TS_EXT = (".ts", ".mts", ".cts")
@@ -150,6 +159,66 @@ def scan_js(root: Path) -> set[str]:
     return names
 
 
+_GO_SINGLE = re.compile(r'(?m)^\s*import\s+(?:(\w+|\.|_)\s+)?"([^"\n]+)"')
+_GO_BLOCK = re.compile(r"(?s)\bimport\s*\((.*?)\)")
+_GO_LINE = re.compile(r'(?m)^\s*(?:(\w+|\.|_)\s+)?"([^"\n]+)"\s*$')
+_GO_VERSION = re.compile(r"^v\d+$")
+
+
+def referenced_names_go(source: str) -> set[str]:
+    """Every ``importpath.Name`` a Go file uses: ``import "go.etcd.io/etcd/wal"`` followed by
+    ``wal.Create(...)`` gives ``go.etcd.io/etcd/wal.Create``. An import alias resolves, and a
+    major-version path (``.../v2``) is named by the element before it. A dot import and a
+    blank import are not tracked."""
+    found = list(_GO_SINGLE.findall(source))
+    for body in _GO_BLOCK.findall(source):
+        found += _GO_LINE.findall(body)
+    imports: dict[str, str] = {}
+    for alias, path in found:
+        if alias in (".", "_"):
+            continue
+        parts = path.split("/")
+        default = parts[-2] if _GO_VERSION.match(parts[-1]) and len(parts) > 1 else parts[-1]
+        imports[alias or default.replace("-", "_")] = path
+    code = re.sub(r'`[^`]*`|"(?:\\.|[^"\\\n])*"|//[^\n]*|/\*.*?\*/', '""', source, flags=re.S)
+    out: set[str] = set()
+    for alias, path in imports.items():
+        used = False
+        for m in re.finditer(rf"\b{re.escape(alias)}\.([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)?)", code):
+            out.add(f"{path}.{m.group(1)}")
+            used = True
+        if used:
+            out.add(path)
+    return out
+
+
+def scan_go(root: Path) -> set[str]:
+    """Like ``scan_python`` for Go source (``.go`` files, tests skipped)."""
+    names: set[str] = set()
+    seen = 0
+    stack = [root]
+    while stack and seen < _MAX_FILES:
+        d = stack.pop()
+        try:
+            entries = sorted(d.iterdir())
+        except OSError:
+            continue
+        for e in entries:
+            if e.is_dir():
+                if e.name not in _SKIP_DIRS and not e.name.startswith("."):
+                    stack.append(e)
+            elif e.suffix == ".go" and not e.name.endswith("_test.go"):
+                seen += 1
+                try:
+                    if e.stat().st_size <= _MAX_BYTES:
+                        names |= referenced_names_go(
+                            e.read_text(encoding="utf-8", errors="replace")
+                        )
+                except OSError:
+                    continue
+    return names
+
+
 def _class_of(symbol: str) -> str | None:
     """``pkg.mod.Session.request`` -> ``pkg.mod.Session`` when the second-to-last segment
     looks like a class (CapWords); None for a module-level function."""
@@ -171,7 +240,7 @@ def classify(
     A method call through an instance (``s = requests.Session(); s.request()``) is not a
     dotted name the source spells out, so when a listed symbol is a method and the source
     references its class, the verdict is ``class_used``, never ``not_called``."""
-    if ecosystem not in ("PyPI", "npm") or not symbols:
+    if ecosystem not in ("PyPI", "npm", "Go") or not symbols:
         return "not_analyzed"
     if not path or (len(path) != 2 and not deep):
         # transitive: project code does not call it directly. With ``deep`` the symbols are

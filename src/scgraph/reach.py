@@ -85,7 +85,7 @@ def call_graph_reachability(repo_dir, ecosystem, vulnerable_symbol, entrypoints=
     # ... invoke tool, parse the graph, BFS from entrypoints to vulnerable_symbol ...
     raise NotImplementedError(
         "invoke the extractor, load its JSON call graph, BFS entrypoints -> symbol. "
-        "See docs/architecture.md (the reachability gate)."
+        "See docs/ARCHITECTURE.md (the reachability gate)."
     )
 
 

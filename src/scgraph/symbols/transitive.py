@@ -35,12 +35,22 @@ MAX_NAMES = 200
 
 
 def top_modules(release: Release) -> set[str]:
-    """Importable top-level names a release provides (``requests``, ``urllib3``)."""
+    """Importable top-level names a release provides (``requests``, ``urllib3``). An npm
+    package is imported by its own name."""
+    if release.lang == "javascript":
+        return {release.package}
     out = {release.module_of(p).split(".")[0] for p in release.files}
     return {m for m in out if m and m.isidentifier()}
 
 
-def _imports_any(text: str, tops: set[str]) -> bool:
+def _imports_any(text: str, tops: set[str], lang: str = "python") -> bool:
+    if lang == "javascript":  # require('pkg'), require('pkg/sub'), from 'pkg'
+        return any(
+            re.search(
+                rf"""(?:require\(\s*|from\s+|import\s+)['"]{re.escape(t)}(?:/[^'"]*)?['"]""", text
+            )
+            for t in tops
+        )
     return any(
         re.search(rf"^\s*(?:from|import)\s+{re.escape(t)}\b", text, re.M) is not None for t in tops
     )
@@ -103,7 +113,7 @@ def callers_of(
                 continue
             text = release.files.get(path, "")
             if path not in imports:
-                imports[path] = _imports_any(text, tops)
+                imports[path] = _imports_any(text, tops, release.lang)
             if not imports[path]:
                 continue
             if name in safe or any(_imports_name(text, m, name) for m in exact.get(name, [])):
@@ -116,12 +126,14 @@ def callers_of(
             for item in release.readers_of(prop.name):
                 path = item[1]
                 if path not in imports:
-                    imports[path] = _imports_any(release.files.get(path, ""), tops)
+                    imports[path] = _imports_any(release.files.get(path, ""), tops, release.lang)
                 if imports[path]:
                     add(item)
     if ON["module"] and any(q == "<module>" for _, q in pairs):  # the dependency runs on import
         for mod, path, f in release.graph_functions():
-            if f.qualname == "<module>" and _imports_any(release.files.get(path, ""), tops):
+            if f.qualname == "<module>" and _imports_any(
+                release.files.get(path, ""), tops, release.lang
+            ):
                 add((mod, path, f))
     return out
 
@@ -217,7 +229,9 @@ def propagate(
     regular = [(m, q) for m, q in pairs if q != "<module>"]
     names = dotted_names(head, regular)
     wild = [m for m, q in pairs if q == "<module>"]
-    if wild:  # import-time reach: anything that imports the package (or that module) triggers it
+    if wild and head.lang == "javascript":  # requiring the package runs its import-time code
+        names.append(f"{head.package}.*")
+    elif wild:  # import-time reach: anything that imports the package (or that module) triggers it
         top = next(iter(sorted(top_modules(head))), "")
         loaded = _imported_modules(head, top) if top else set()
         for m in wild:

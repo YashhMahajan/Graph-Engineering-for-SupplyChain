@@ -32,6 +32,6 @@ data/
 
 ## Provenance
 
-Source versions, DOIs, and licenses are in [`docs/data-sources.md`](../docs/data-sources.md).
+Source versions, DOIs, and licenses are in [`docs/DATA-SOURCES.md`](../docs/DATA-SOURCES.md).
 The parsed parquet is a deterministic function of the raw inputs; the CSR store is a
 deterministic function of the parquet.

@@ -75,18 +75,18 @@ class Release:
         return self._funcs
 
     def graph_functions(self) -> list[tuple[str, str, Func]]:
-        """``functions()`` plus, for Python, one ``<module>`` pseudo-function per file standing
-        for the code that runs on import. Used by the call graph only."""
+        """``functions()`` plus, for Python and JavaScript, one ``<module>`` pseudo-function per
+        file, standing for the code that runs on import. Used by the call graph only."""
         if self._graph is None:
             out = list(self.functions())
-            if self.lang == "python" and ON["module"]:
+            if self.lang in ("python", "javascript") and ON["module"]:
                 for path, text in self.files.items():
                     if is_test_path(path):
                         continue
                     mod = self.module_of(path)
                     out.extend(
                         (mod, path, f)
-                        for f in functions(text, "python", True)
+                        for f in functions(text, self.lang, True, path)
                         if f.qualname == "<module>"
                     )
             self._graph = out

@@ -30,6 +30,12 @@ inputs:
   comment:
     description: In diff mode, post one sticky pull-request comment (true or false).
     default: "true"
+  reachability:
+    description: Also check whether your code calls the vulnerable function (true or false).
+    default: "false"
+  deep:
+    description: Also follow transitive Python dependencies. Needs the network (true or false).
+    default: "false"
   version:
     description: The scgraph version to install. Empty means the version of this action.
     default: ""
@@ -60,8 +66,13 @@ runs:
         FAIL_ON: ${{ inputs.fail-on }}
         MIN_SEVERITY: ${{ inputs.min-severity }}
         INCLUDE_DEV: ${{ inputs.include-dev }}
+        REACHABILITY: ${{ inputs.reachability }}
+        DEEP: ${{ inputs.deep }}
       run: |
         dev=""; [ "$INCLUDE_DEV" = "true" ] && dev="--include-dev"
+        reach=""; [ "$REACHABILITY" = "true" ] && reach="--reachability"
+        [ "$DEEP" = "true" ] && reach="--deep"
+        dev="$dev $reach"
         # shellcheck disable=SC2086
         scgraph scan $SCAN_PATH --min-severity "$MIN_SEVERITY" $dev \
           --format sarif --output scgraph.sarif --fail-on never

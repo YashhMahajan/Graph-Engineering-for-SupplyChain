@@ -55,10 +55,12 @@ CI does these checks on each pull request. All checks must pass.
   example `examples/name.package-lock.json`.
 - **Report negative results.** If a method does not help, write this in the notebook
   and in the docs.
-- **Text in docs and comments:** use full words, not contractions. Do not use em dashes.
+- **Text in docs and comments:** write Simplified Technical English (ASD-STE100): short
+  sentences, active voice, no contractions, no em dashes. Read `docs/AGENTS.md` and `MEMORY.md`
+  if you use an AI agent.
 - **Result numbers** are in `results/run_manifest.json` and `results/scorecard.json`.
   If a change moves a headline number, make the related `results/` files again and
-  update `docs/results.md` in the same pull request.
+  update the numbers in `README.md` and `docs/SYMBOLS.md` in the same pull request.
 
 ## Commits and pull requests
 
@@ -70,11 +72,11 @@ CI does these checks on each pull request. All checks must pass.
 
 Add an entry to the resolver (`resolve.py`), to version ordering (`versions.py`), and to
 the Libraries.io platform map (`acquire_full.py`). Add unit tests for version comparison
-and range match. Refer to `docs/methodology.md`.
+and range match. Refer to `docs/ARCHITECTURE.md`.
 
 ## Responsible use
 
-Read [`docs/responsible-use.md`](docs/responsible-use.md). Do not add features whose main
+Read [`docs/RESPONSIBLE-USE.md`](docs/RESPONSIBLE-USE.md). Do not add features whose main
 use is attack, for example a list of names to squat or a crawler that lists exposed
 third-party repositories.
 
