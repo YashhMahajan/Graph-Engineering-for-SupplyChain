@@ -1,0 +1,172 @@
+{
+ "dataset": "Go vulnerability database (OSV snapshot), advisories with labelled symbols and a GitHub fix commit or pull request",
+ "n_train": 436,
+ "n_test": 188,
+ "split": "temporal: oldest 70% train, newest 30% test",
+ "generated": "2026-11-12",
+ "candidate_coverage": {
+  "changed_functions_only": 0.7872,
+  "with_callers": 0.8085,
+  "no_candidates": 0.0266
+ },
+ "ranker_weights": {
+  "new_function": -4.036,
+  "via_caller_public": 1.987,
+  "inv_size_rank": 1.729,
+  "share": 1.204,
+  "via_caller": -0.758,
+  "adds_check": 0.664,
+  "log_test_refs": 0.441,
+  "is_method": -0.386,
+  "name_in_advisory": 0.222,
+  "public": -0.106,
+  "only_changed": 0.098,
+  "removed_only": -0.096,
+  "advisory_overlap": 0.049,
+  "log_changed": 0.04,
+  "dunder": 0.0
+ },
+ "validation": {
+  "heuristic": {
+   "n": 88,
+   "top1": 0.7727,
+   "top3": 0.8977,
+   "mrr": 0.8343,
+   "abstain": 0.0568,
+   "coverage": 0.9091
+  },
+  "ranker": {
+   "n": 88,
+   "top1": 0.75,
+   "top3": 0.8864,
+   "mrr": 0.8218,
+   "abstain": 0.0568,
+   "coverage": 0.9091
+  },
+  "chosen": "heuristic",
+  "n": 88
+ },
+ "llm": {
+  "requests": 0,
+  "cached": 0,
+  "task_cache_hits": 37,
+  "tasks": 113,
+  "answered": 37,
+  "failed": 0,
+  "split": 0,
+  "stopped": "",
+  "asked": 113,
+  "answered_none": 2,
+  "evidence_found_rate": 1.0,
+  "models": [
+   "baidu/ernie-5.5-flash-preview:free"
+  ],
+  "paired_on_answered": {
+   "llm_fixes": 3,
+   "llm_breaks": 1,
+   "both_right": 20,
+   "both_wrong": 13,
+   "mcnemar_exact_p": 0.625
+  }
+ },
+ "engine_b": {
+  "n": 48,
+  "with_releases": 42,
+  "k": 8,
+  "bm25": {
+   "n": 48,
+   "top1": 0.2708,
+   "top3": 0.4792,
+   "mrr": 0.3893,
+   "abstain": 0.125,
+   "coverage": 0.625
+  },
+  "bm25+release_diff": {
+   "n": 48,
+   "top1": 0.4375,
+   "top3": 0.5208,
+   "mrr": 0.4929,
+   "abstain": 0.125,
+   "coverage": 0.625
+  },
+  "bm25+release_diff+llm": {
+   "n": 48,
+   "top1": 0.5208,
+   "top3": 0.5833,
+   "mrr": 0.5523,
+   "abstain": 0.1875,
+   "coverage": 0.625
+  },
+  "llm": {
+   "requests": 0,
+   "cached": 0,
+   "task_cache_hits": 33,
+   "tasks": 42,
+   "answered": 33,
+   "failed": 0,
+   "split": 0,
+   "stopped": "",
+   "answered_none": 4,
+   "none_when_gold_missing": 4,
+   "answered_ids": 33
+  }
+ },
+ "stages": {
+  "largest": {
+   "n": 188,
+   "top1": 0.5851,
+   "top3": 0.766,
+   "mrr": 0.6738,
+   "abstain": 0.0266,
+   "coverage": 0.8085
+  },
+  "heuristic": {
+   "n": 188,
+   "top1": 0.6968,
+   "top3": 0.7872,
+   "mrr": 0.7411,
+   "abstain": 0.0266,
+   "coverage": 0.8085
+  },
+  "ranker": {
+   "n": 188,
+   "top1": 0.7074,
+   "top3": 0.7872,
+   "mrr": 0.7458,
+   "abstain": 0.0266,
+   "coverage": 0.8085
+  },
+  "ranker_train_fit": {
+   "n": 436,
+   "top1": 0.8096,
+   "top3": 0.8991,
+   "mrr": 0.8575,
+   "abstain": 0.0275,
+   "coverage": 0.9289
+  },
+  "ranker+llm": {
+   "n": 188,
+   "top1": 0.7074,
+   "top3": 0.7819,
+   "mrr": 0.7477,
+   "abstain": 0.0266,
+   "coverage": 0.8085
+  },
+  "ranker_on_llm_answered": {
+   "n": 37,
+   "top1": 0.5676,
+   "top3": 0.7297,
+   "mrr": 0.6351,
+   "abstain": 0.0,
+   "coverage": 0.7297
+  },
+  "ranker+llm_on_llm_answered": {
+   "n": 37,
+   "top1": 0.6216,
+   "top3": 0.7027,
+   "mrr": 0.6689,
+   "abstain": 0.0,
+   "coverage": 0.7297
+  }
+ }
+}

@@ -70,7 +70,19 @@ def _c(s: str, key: str, on: bool) -> str:
     return f"\033[{_COLOR[key]}m{s}\033[0m" if on else s
 
 
-_REACH_TEXT = {"reachable": "vulnerable function called", "not_called": "function not called"}
+_REACH_TEXT = {
+    "reachable": "vulnerable function called",
+    "class_used": "class with vulnerable method used",
+    "not_called": "function not called",
+}
+
+
+def _reach(f: Finding) -> str:
+    text = _REACH_TEXT[f.reachability]
+    if f.symbols_source != "inferred":
+        return text
+    hops = f", {f.reach_hops} hops" if f.reach_hops > 1 else ""
+    return f"{text} (inferred{hops})"
 
 
 def _signal_bits(f: Finding) -> str:
@@ -86,7 +98,7 @@ def _signal_bits(f: Finding) -> str:
     if f.imported in ("imported", "not_imported"):
         bits.append(f.imported.replace("_", " "))
     if f.reachability in _REACH_TEXT:
-        bits.append(_REACH_TEXT[f.reachability])
+        bits.append(_reach(f))
     return " · ".join(bits)
 
 
@@ -128,7 +140,7 @@ def to_text(results: list[ScanResult], color: bool | None = None, verbose: bool 
             if top.imported in ("imported", "not_imported"):
                 meta.append(top.imported.replace("_", " "))
             if top.reachability in _REACH_TEXT:
-                meta.append(_REACH_TEXT[top.reachability])
+                meta.append(_reach(top))
             tag = _c(f" {top.priority} {_TAG[top.priority]} ", top.priority, on)
             lines.append(
                 f"\n {tag} {_c(f'{pkg}@{ver}', 'b', on)}  {_c(' · '.join(meta), 'dim', on)}"

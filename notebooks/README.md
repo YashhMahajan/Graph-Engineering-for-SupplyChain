@@ -1,7 +1,7 @@
 # notebooks/
 
 **[`supply_chain_graph_engineering.ipynb`](supply_chain_graph_engineering.ipynb)** is the
-notebook, and it is the centre of this repository. 10 parts, 41 sections, 113 cells,
+notebook, and it is the centre of this repository. 11 parts, 44 sections, 142 cells,
 committed with the outputs and all 14 figures from the full run (8 ecosystems, 82.8M
 edges), so it reads completely on GitHub without running anything. Every section is
 theory, then code, then an honest reading of the result, negatives included.

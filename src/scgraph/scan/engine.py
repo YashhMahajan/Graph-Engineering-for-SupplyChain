@@ -119,7 +119,10 @@ class Finding:
     priority: str = ""
     imported: str = ""  # import-level hint: imported | not_imported | unknown | "" (not run)
     symbols: list[str] = field(default_factory=list)  # vulnerable functions the advisory names
-    reachability: str = ""  # reachable | not_called | not_analyzed | "" (not run)
+    reachability: str = ""  # reachable | class_used | not_called | not_analyzed | "" (not run)
+    symbols_source: str = ""  # "osv" (the advisory names them) | "inferred" (scgraph.symbols)
+    symbol_evidence: str = ""  # for inferred symbols: the fix commit or "code search"
+    reach_hops: int = 0  # >1 when reachability followed a transitive dependency path
 
     @property
     def depth(self) -> int:

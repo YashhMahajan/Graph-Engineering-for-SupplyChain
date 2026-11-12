@@ -24,6 +24,14 @@ from scgraph import build_graph
 from scgraph.kgstore import KGStore
 from scgraph.osv import materialise
 
+
+@pytest.fixture(autouse=True)
+def _no_packaged_symbol_dataset(tmp_path_factory, monkeypatch):
+    """Scans in tests never read the packaged inferred-symbol dataset; a test that needs
+    one points SCGRAPH_SYMBOLS at its own file."""
+    monkeypatch.setenv("SCGRAPH_SYMBOLS", str(tmp_path_factory.getbasetemp() / "none.jsonl"))
+
+
 # ---- packages -------------------------------------------------------------------
 _PACKAGES = [
     (0, "maven", "com.example:app"),

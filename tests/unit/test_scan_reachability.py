@@ -52,7 +52,8 @@ def test_classify_gives_one_verdict_per_situation() -> None:
     assert classify("PyPI", direct, syms, {"yaml.safe_load"}) == "not_called"
     assert classify("PyPI", direct, [], {"yaml.load"}) == "not_analyzed"  # advisory lists none
     assert classify("PyPI", ["app", "web@1", "pyyaml@5.3"], syms, {"yaml.load"}) == "not_analyzed"
-    assert classify("npm", direct, syms, {"yaml.load"}) == "not_analyzed"
+    assert classify("npm", direct, syms, {"yaml.load"}) == "reachable"  # npm is analysed too
+    assert classify("crates.io", direct, syms, {"yaml.load"}) == "not_analyzed"
     assert classify("PyPI", None, syms, {"yaml.load"}) == "not_analyzed"
 
 
@@ -128,3 +129,62 @@ def test_the_text_output_names_the_verdict(tmp_path: Path, capsys) -> None:
     args = _setup(tmp_path, "import yaml\nyaml.load(x)\n")
     main([*args[:-2], "--reachability"])
     assert "vulnerable function called" in capsys.readouterr().out
+
+
+def test_a_method_symbol_with_its_class_referenced_is_class_used_not_not_called() -> None:
+    direct = ["app", "requests@2.30.0"]
+    syms = ["requests.sessions.Session.request", "requests.Session.request"]
+    assert classify("PyPI", direct, syms, {"requests.Session"}) == "class_used"
+    assert classify("PyPI", direct, syms, {"requests.get"}) == "not_called"
+    assert (
+        classify("PyPI", direct, ["yaml.load"], {"yaml"}) == "not_called"
+    )  # a module is not a class
+
+
+def _inferred(tmp_path: Path, monkeypatch, symbol: str, entry_points: list[str]) -> None:
+    from scgraph.symbols.dataset import write
+
+    rec = {
+        "id": "PYSEC-yaml",
+        "aliases": ["GHSA-yaml"],
+        "ecosystem": "PyPI",
+        "package": "pyyaml",
+        "symbol": symbol,
+        "entry_points": entry_points,
+        "method": "fix-diff",
+        "evidence": {"fix": "https://github.com/yaml/pyyaml/commit/abc"},
+    }
+    path = tmp_path / "symbols" / "pypi.jsonl"
+    write([rec], path)
+    monkeypatch.setenv("SCGRAPH_SYMBOLS", str(path))
+
+
+def test_cli_uses_inferred_symbols_when_the_advisory_names_none(
+    tmp_path: Path, capsys, monkeypatch
+) -> None:
+    _inferred(tmp_path, monkeypatch, "yaml.constructor.construct_python_object", ["yaml.load"])
+    args = _setup(tmp_path, "import yaml\nyaml.load(x)\n", functions=None)
+    code, alert = verdict(args, capsys, "--reachability")
+    assert code == 1 and alert["reachability"] == "reachable"
+    assert alert["symbols_source"] == "inferred"
+    assert alert["symbol_evidence"] == "https://github.com/yaml/pyyaml/commit/abc"
+    main([*args[:-2], "--reachability"])
+    assert "vulnerable function called (inferred)" in capsys.readouterr().out
+
+
+def test_published_functions_win_over_inferred_ones(tmp_path: Path, capsys, monkeypatch) -> None:
+    _inferred(tmp_path, monkeypatch, "yaml.other", [])
+    args = _setup(tmp_path, "import yaml\nyaml.load(x)\n")  # the advisory names yaml.load
+    _, alert = verdict(args, capsys, "--reachability")
+    assert alert["symbols"] == ["yaml.load"] and alert["symbols_source"] == "osv"
+
+
+def test_a_tampered_dataset_is_ignored_with_a_warning(tmp_path: Path, capsys, monkeypatch) -> None:
+    _inferred(tmp_path, monkeypatch, "yaml.load", [])
+    p = tmp_path / "symbols" / "pypi.jsonl"
+    p.write_text(p.read_text().replace("yaml.load", "yaml.LOAD"))
+    args = _setup(tmp_path, "import yaml\nyaml.load(x)\n", functions=None)
+    code = main([*args, "--reachability"])
+    out = capsys.readouterr()
+    assert code == 1 and "does not match" in out.err
+    assert json.loads(out.out)["results"][0]["alerts"][0]["reachability"] == "not_analyzed"

@@ -313,26 +313,44 @@ suppresses an alert and never changes the exit code.
 ### Function-level reachability: `--reachability`
 
 ```bash
-scgraph scan . --reachability
+scgraph scan . --reachability          # direct dependencies, Python and npm
+scgraph scan . --deep                  # also transitive Python dependencies (downloads sources)
 ```
 
-Some advisories name the vulnerable functions (OSV `affected_functions`, or `imports[].symbols`
-in the Go database). For those, and for a **direct Python dependency**, scgraph reads your
-source with `ast` and checks whether it references one. Aliases resolve: `import yaml as y;
-y.load(x)` and `from yaml import load as ld; ld(x)` both match `yaml.load`. Each alert gets
-one verdict, shown next to it and in the JSON as `reachability`:
+The question is *does your code call the vulnerable function*. Where do the function names
+come from?
+
+1. **The advisory**, when it names them (OSV `affected_functions`, or `imports[].symbols` in
+   the Go database).
+2. **The inferred-symbol dataset**, shipped with scgraph, when it does not: the vulnerable
+   function recovered at build time from the fix commit and released source, verified, with the
+   public entry points that reach it. Verdicts that rest on it are labelled `(inferred)` and the
+   evidence (the fix commit) is in the JSON. See [`symbols.md`](symbols.md). A scan makes
+   **zero model calls**; it only reads the file.
+
+Your source is read with `ast` (Python) or tree-sitter (JavaScript and TypeScript, optional
+extra `scgraph-cli[symbols-js]`). Aliases resolve: `import yaml as y; y.load(x)` and
+`const {merge: m} = require('lodash'); m(x)` both match. Each alert gets one verdict, shown next
+to it and in the JSON as `reachability`:
 
 | verdict | meaning |
 |---|---|
-| `reachable` | project source references a listed vulnerable function |
-| `not_called` | the advisory lists functions and no reference to any was found |
-| `not_analyzed` | not a Python package, the advisory lists no functions, or the package is transitive (your code does not call it directly) |
+| `reachable` | project source references a vulnerable function, or an entry point that reaches it |
+| `class_used` | the vulnerable function is a method and project source references its class |
+| `not_called` | function names are known and no reference to any was found |
+| `not_analyzed` | the ecosystem is not Python or npm, no function names are known, or the package is transitive and `--deep` was not given |
+
+`--deep` follows the dependency path scgraph already proves, backwards through the released
+source of each package on it (`app -> requests -> urllib3`), and reports which public names of
+your **direct** dependency lead to the vulnerable function. It needs the network once per package
+version (then cached), handles Python only, and analyses the shortest path only: `not_called`
+means "not through this path". Output shows the hop count, for example
+`vulnerable function called (inferred, 2 hops)`.
 
 It **never suppresses an alert or changes the exit code**. `not_called` means *no reference
-found*, not proof: a call through `getattr`, `eval`, a plugin registry or another package's
-wrapper is not seen, and an advisory's function list can be incomplete. Use it to order the
-queue, not to close an alert. Most advisories list no functions, so most alerts will show
-`not_analyzed`. JavaScript and the other ecosystems are not analysed.
+found*, not proof: a call through `getattr`, `eval`, a plugin registry, an instance whose class
+you never name, or another package's wrapper is not seen, and a function list can be incomplete.
+Use it to order the queue, not to close an alert.
 
 ## Review a pull request: `scgraph diff`
 
@@ -442,8 +460,7 @@ for result in scan(".", policy=Policy(min_severity=7.0)):
 - `bun.lockb` (binary) and `pom.xml` are not read, see above.
 - The direct-dependency bump is for npm only.
 - A path shows that the package is installed. It does not show that your code calls
-  the vulnerable function. `--reachability` checks that for direct Python dependencies
-  whose advisory names the functions, and for nothing else.
+  the vulnerable function. `--reachability` and `--deep` check that, within the limits above.
 
 
 ## VEX output

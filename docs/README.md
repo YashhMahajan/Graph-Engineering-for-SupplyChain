@@ -14,6 +14,7 @@ alert with a resolvable path.
 | [data-sources.md](data-sources.md) | each input corpus: what it provides, exact version and DOI, license, how `scgraph` ingests it, provenance caveats, and the parsed table row counts |
 | [results.md](results.md) | the full-run findings read in context: graph scale and shape, criticality, systemic risk, evolution, remediation, the model layer, external validation, and performance |
 | [evaluation.md](evaluation.md) | the five evaluation modules and a candid "known limitations and caveats" section, including the three partly-tautological metrics |
+| [symbols.md](symbols.md) | vulnerable-symbol inference: which function an advisory concerns, recovered from fix commits and released source at build time, with the LLM only choosing among verified candidates; the Go-database evaluation and the shipped PyPI dataset |
 | [reproducing.md](reproducing.md) | three tiers of reproduction: read-only, a laptop smoke run, and the full run on a GPU box |
 | [glossary.md](glossary.md) | definitions of the terms a reader will hit: articulation point, betweenness, CSR, CVSS, k-core, PURL, SBOM, VEX, and the rest |
 

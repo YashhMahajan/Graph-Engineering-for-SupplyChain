@@ -6,6 +6,7 @@ project's own source can be searched for a reference to one of them. The result 
 to the alert and **never suppresses it**:
 
   reachable     project source references a listed vulnerable function
+  class_used    a listed function is a method and project source references its class
   not_called    the advisory lists functions and no reference to any was found
   not_analyzed  nothing can be said, and the reason is one of: not a Python package, the
                 advisory lists no functions, or the package is transitive (project code does
@@ -26,8 +27,10 @@ from pathlib import Path
 
 from .lockfiles import _SKIP_DIRS
 
-__all__ = ["classify", "referenced_names", "scan_python", "symbols_of"]
+__all__ = ["classify", "referenced_names", "scan_js", "scan_python", "symbols_of"]
 
+_JS_EXT = (".js", ".jsx", ".mjs", ".cjs", ".ts", ".mts", ".cts")
+_TS_EXT = (".ts", ".mts", ".cts")
 _MAX_FILES = 20_000
 _MAX_BYTES = 1_000_000
 
@@ -114,10 +117,72 @@ def scan_python(root: Path) -> set[str]:
     return names
 
 
-def classify(ecosystem: str, path: list[str] | None, symbols: list[str], names: set[str]) -> str:
-    """``reachable``, ``not_called`` or ``not_analyzed`` for one alert."""
-    if ecosystem != "PyPI" or not symbols:
+def scan_js(root: Path) -> set[str]:
+    """Like ``scan_python`` for JavaScript (``.js``, ``.jsx``, ``.mjs``, ``.cjs``) and TypeScript
+    (``.ts``). Needs the optional tree-sitter packages; without them the set is empty and
+    nothing is claimed."""
+    from ..symbols.js import available, referenced_names_js
+
+    names: set[str] = set()
+    if not available():
+        return names
+    seen = 0
+    stack = [root]
+    while stack and seen < _MAX_FILES:
+        d = stack.pop()
+        try:
+            entries = sorted(d.iterdir())
+        except OSError:
+            continue
+        for e in entries:
+            if e.is_dir():
+                if e.name not in _SKIP_DIRS and not e.name.startswith("."):
+                    stack.append(e)
+            elif e.suffix in _JS_EXT and not e.name.endswith((".min.js", ".d.ts")):
+                seen += 1
+                try:
+                    if e.stat().st_size <= _MAX_BYTES:
+                        names |= referenced_names_js(
+                            e.read_text(encoding="utf-8", errors="replace"), ts=e.suffix in _TS_EXT
+                        )
+                except OSError:
+                    continue
+    return names
+
+
+def _class_of(symbol: str) -> str | None:
+    """``pkg.mod.Session.request`` -> ``pkg.mod.Session`` when the second-to-last segment
+    looks like a class (CapWords); None for a module-level function."""
+    parts = symbol.split(".")
+    if len(parts) >= 3 and parts[-2][:1].isupper():
+        return ".".join(parts[:-1])
+    return None
+
+
+def classify(
+    ecosystem: str,
+    path: list[str] | None,
+    symbols: list[str],
+    names: set[str],
+    deep: bool = False,
+) -> str:
+    """``reachable``, ``class_used``, ``not_called`` or ``not_analyzed`` for one alert.
+
+    A method call through an instance (``s = requests.Session(); s.request()``) is not a
+    dotted name the source spells out, so when a listed symbol is a method and the source
+    references its class, the verdict is ``class_used``, never ``not_called``."""
+    if ecosystem not in ("PyPI", "npm") or not symbols:
         return "not_analyzed"
-    if not path or len(path) != 2:  # transitive: project code does not call it directly
+    if not path or (len(path) != 2 and not deep):
+        # transitive: project code does not call it directly. With ``deep`` the symbols are
+        # the direct dependency's names that reach the vulnerable function.
         return "not_analyzed"
-    return "reachable" if any(s in names for s in symbols) else "not_called"
+    if any(s in names for s in symbols):
+        return "reachable"
+    for s in symbols:  # "pkg.*": import-time reach, triggered by using anything of pkg
+        if s.endswith(".*") and any(n.startswith(s[:-1]) or n == s[:-2] for n in names):
+            return "reachable"
+    classes = {c for c in map(_class_of, symbols) if c}
+    if classes & names:
+        return "class_used"
+    return "not_called"
