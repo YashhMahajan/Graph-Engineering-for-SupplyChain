@@ -15,32 +15,29 @@ It follows the ASD-STE100 rules for Simplified Technical English. It has no secr
 
 ## Short-term memory
 
-Last updated: 2026-11-12.
+Last updated: 2026-11-13.
 
 State:
 
-- `main` has the symbols work (docs reduced to 6 files, `CLAUDE.md` holds the memory; the last PR was merged without a full CI watch by the user's choice): inference, `--reachability`, `--deep` (PyPI, npm), ledger claims,
-  signed datasets, OSV export, `scgraph ask`, Go and npm reachability, the weekly refresh workflow.
-- Version 1.4.0 is set in `pyproject.toml`, `CITATION.cff` and the changelog. It is **not tagged**.
+- `main` has the symbols work and PR #27 (docs pinned to v1.4.0). The docs are 6 files.
+  `MEMORY.md` is gone: this file holds the memory.
+- Version 1.4.0 is set in `pyproject.toml`, `CITATION.cff` and the changelog. The user approved
+  the release and the tag on 2026-11-13. Steps: merge the data PR, then
+  `gh workflow run release.yml` (tags `v1.4.0`, publishes the GitHub Release), then
+  `gh workflow run publish-pypi.yml -f tag=v1.4.0`. If a tool blocks the command, ask the user to
+  run it.
 - The datasets are signed. If you change a `*.jsonl` file in `src/scgraph/symbols/data/`, you must
   sign it again: `scgraph symbols sign`. The private key is `~/.config/scgraph/signing.key`.
 
-Open (session paused on 2026-11-12; the user will ask to resume):
+Open:
 
-1. **Release 1.4.0 is approved by the user.** PR #27 (docs pins to v1.4.0) is open. Steps: merge
-   PR #27 when its checks pass, then run `gh workflow run release.yml` (it tags `v1.4.0` and
-   publishes the GitHub Release), then `gh workflow run publish-pypi.yml -f tag=v1.4.0`.
-2. **Points 5 and 9 need the LLM budget.** It resets at 00:00 UTC. Check `scgraph symbols budget`.
-   The `symbols-refresh` change (moderate sizes, `nice`, 30 + 5 + 5 requests) is in `git stash`
-   on this machine. If the stash is gone, edit the Makefile target to these values. Then run
-   `make symbols-refresh`, check `scgraph symbols verify`, and open a pull request with the
-   changed data and `results/metrics`. It answers npm code-search records and re-asks Go advisories.
-3. **Point 7, wider datasets.** The build with `--popular 5000` (PyPI) and `3000` (npm) did not
-   finish: it is heavy. The verify stage is now parallel. Run it on a quiet machine, with `nice`.
+1. **Data refresh (points 5 and 9).** Branch `data/symbols-refresh-2` runs `make symbols-refresh`
+   (30 + 5 + 5 LLM requests). Then: `scgraph symbols verify`, `scgraph symbols sign`, tests, ruff,
+   mypy, a pull request with the changed data and `results/metrics`. Merge when CI passes.
+2. **Point 7, wider datasets.** The build with `--popular 5000` (PyPI) and `3000` (npm) did not
+   finish: it is heavy. Run it on a quiet machine, with `nice`, never with the refresh.
    Maven and Cargo scan-side support is out of scope.
-4. Send OSV patches to an advisory database only when the user says so.
-
-Not tested: PR #26 was merged without a full CI watch, by the user's choice. CI on `main` passed.
+3. Send OSV patches to an advisory database only when the user says so.
 
 ## Long-term memory
 
