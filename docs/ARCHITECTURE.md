@@ -67,28 +67,141 @@ at each step. The full run gives 4,084, then 3,691, then 3,545, then 0.
 
 ## Scan
 
-`scgraph scan` parses a lockfile into a graph. It asks OSV which versions have advisories and
-merges records for the same issue (GHSA, PYSEC, CVE). It finds the shortest path from the root to
-each finding, runs the gates, and ranks the alerts (P0 malicious, P1 exploited, P2 critical,
-P3 high, P4 other). For npm it also finds the smallest bump of a direct dependency that removes
-the vulnerable child. Usage is in [SCAN.md](SCAN.md).
+`scgraph scan [PATH ...]` takes a lockfile or a directory. In a directory it finds every lockfile
+and skips `node_modules`, `.venv`, `vendor`, `target` and hidden directories. The lockfile formats
+are in [DATA-SOURCES.md](DATA-SOURCES.md).
+
+1. Parse the lockfile into a graph. The root has an edge to each direct dependency.
+2. Ask OSV which versions have advisories (`MAL-` records are malware). Merge records for the
+   same issue (GHSA, PYSEC, CVE) into one finding.
+3. Find the shortest path from the root to each finding. A production path wins over a dev path.
+4. Run the gates. The first gate that stops a finding gives the reason: `withdrawn`, `path`,
+   `scope` (dev only, malware does not stop), `severity` (below `--min-severity`, malware and KEV
+   do not stop), `ignored` (entry in `.scgraph-ignore` that has not expired).
+5. Rank the alerts: P0 malicious, P1 exploited (CISA KEV), P2 critical (CVSS 9.0 or more, or
+   EPSS 0.1 or more), P3 high (CVSS 7.0 or more), P4 other.
+6. Find the smallest safe upgrade. For npm, also the smallest bump of a direct dependency that
+   removes the vulnerable child.
+
+| Option | Effect |
+|---|---|
+| `-f, --format` | `text` (default), `json`, `sarif`, `markdown`, `openvex`, `html` |
+| `-o, --output FILE` | Write the report to a file |
+| `--fail-on LEVEL` | Exit 1 at this priority or worse: `P0` to `P4`, `any` (default), `never` |
+| `--min-severity N`, `--include-dev` | CVSS floor. Alert on dev-only dependencies. |
+| `--advisory ID` | Incident mode: report only this advisory (repeat for a list) |
+| `--ignore-file FILE` | Ignore list. Default `.scgraph-ignore`. `until=YYYY-MM-DD` ends an entry. |
+| `--offline DIR` | Use OSV dumps from `scgraph fetch-osv --dir DIR`. `SCGRAPH_OSV_DIR` also serves `check`, `hook` and `mcp`. |
+| `--no-signals`, `--no-registry` | Skip CISA KEV and EPSS. Skip registry data for the bump. |
+| `--imports` | Hint whether your source imports each dependency (not proof) |
+| `--reachability`, `--deep` | Check whether your code calls the vulnerable function. `--deep` adds transitive dependencies (network). |
+| `--history DIR` | Record the scan in a hash-chained ledger |
+| `--vex FILE` | Use `not_affected` statements from a supplier |
+| `-v` | Show each abstention |
+
+Exit codes: `0` no alert at the `--fail-on` level, `1` alerts, `2` error. A new unsupported
+format is refused with a message and never read wrongly (pnpm v5 and older, `bun.lockb`).
+
+### Other commands
+
+| Command | Use |
+|---|---|
+| `scgraph diff --base REF` | Scan each lockfile at `REF` and in the working tree. Report only new alerts, resolved alerts and the package changes behind them. The exit code counts new alerts only. The Markdown output starts with `<!-- scgraph-diff -->` so CI edits one comment. Every string from the lockfile is neutralized, because the pull request author controls it. |
+| `scgraph check ECOSYSTEM PKG[@VER] ...` | Before you add a dependency: `ALLOW` (exit 0), `WARN` (1), `BLOCK` (2). |
+| `scgraph hook claude-code` | Claude Code `PreToolUse` hook. It reads each shell command that installs or runs a package. `BLOCK` denies it. `WARN` asks you. |
+| `scgraph mcp` | MCP server: `check_package`, `scan_lockfile`, `explain_advisory`. |
+| `scgraph audit` | Read agent and IDE configuration for code that runs on its own, unpinned launchers and `curl \| sh`. |
+| `scgraph history DIR --advisory ID` | First exposure, fix and regression from the ledger. `--receipt` and `--check` verify an answer. |
+| `scgraph ask "question" [PATH]` | Answer about the scan. Each sentence has a citation. No model. |
+
+`check` blocks a name that is not in the registry (slopsquatting) and a known malicious or missing
+version. It warns for a release younger than `--cooldown` hours (default 48), a package younger
+than 30 days, a name one edit from a popular package, install scripts, a PyPI version with no
+wheel, a deprecated or yanked version, known vulnerabilities, and a lookup that failed
+(`unverified`, never `allow`). For npm it also compares a release with the one before it
+(last 14 days only). Each signal is a warning, never a block: `publisher_changed`,
+`maintainer_added`, `provenance_dropped`, `install_script_added`, `backport_published`,
+`publish_burst` (5 versions in 15 minutes).
+
+CI: the GitHub Action `YashhMahajan/Graph-Engineering-for-SupplyChain@v1.4.0` takes `fail-on`,
+`reachability` and `deep`, uploads SARIF and writes a summary. For pull requests add a job with
+`mode: diff`. Use `pull_request`, not `pull_request_target`. Never run fork code with a write
+token. pre-commit: hook id `scgraph-scan` runs only when a lockfile changes.
+
+Python API: `from scgraph.scan import scan, Policy`.
 
 ## Symbols: the vulnerable function
 
-Advisories for PyPI and npm almost never name the vulnerable function. `symbols/` recovers it at
-build time. [SYMBOLS.md](SYMBOLS.md) gives the details and the measurements.
+`govulncheck` can say "your code does not call the vulnerable function" because the Go database
+names it. In the OSV snapshot used here, 0% of the PyPI, Maven and Cargo records do. `symbols/`
+recovers the function at build time, checks it against released source, follows it through the
+dependency path and ships the result as a data file. A scan reads that file. A scan makes **no
+model call**.
 
 ```
 OSV record
   fix link?  yes -> Engine A: fix diff -> changed functions and callers -> ranker
              no  -> Engine B: search the affected release + release diff
   LLM chooses among the top candidates only if the ranker is unsure
-  Verifier: the symbol exists in the affected release and changes in the fixed release
-  Entry points: public functions of the release that reach it
+  Verifier: the symbol exists in the affected release, and it is removed, changed, or calls
+            something that changed in the fixed release. Every affected range is tried.
+  Entry points: public functions of the release that reach the symbol
   Record -> data/<ecosystem>.jsonl + signed manifest -> ledger claim
 scan time (offline, no model): project source -> reachable | class_used | not_called
 --deep: walk the dependency path backwards through released source
 ```
+
+| Step | Module | Model? |
+|---|---|---|
+| Fix links, diff, cached HTTP | `fetch.py`, `diff.py` | no |
+| Function spans (Python, Go, JS, TS) | `code.py`, `js.py` | no |
+| Candidates and ranking (hand-set weights) | `candidates.py`, `rank.py` | no |
+| Choice among the top candidates | `select.py`, `llm.py` | yes, only if unsure |
+| Search when there is no fix link | `retrieve.py` | LLM re-ranks a short list |
+| Released source: PyPI, Go, npm | `source.py`, `npm.py` | no |
+| Verifier, entry points | `verify.py`, `entry.py` | no |
+| Transitive reachability | `transitive.py`, `deep.py` | no |
+| Dataset, signature, ledger, export | `dataset.py`, `signing.py`, `claims.py`, `export.py` | no |
+
+`scgraph symbols` has the subcommands `infer`, `show`, `budget`, `ledger`, `verify`, `sign` and
+`export`.
+
+**Verdicts.** `reachable`: your source references a vulnerable function or an entry point that
+reaches it. `class_used`: it is a method and your source references its class. `not_called`: the
+names are known and your source references none. `not_analyzed`: unsupported ecosystem, no names,
+or a transitive package without `--deep`. A verdict marked `(inferred)` comes from the dataset.
+A verdict **never closes an alert** and never changes the exit code. A call through `getattr`,
+`eval`, a plugin registry or a wrapper is not seen. Source is read with `ast` (Python),
+tree-sitter (JS and TS, extra `symbols-js`) or a pattern match (Go). An alias resolves.
+`--imports` is weaker: a package used through configuration can show `not imported`.
+
+**Rules for the language model.** It never names a function. It answers with an option id from a
+list that code built, or `none`. It must quote one line of the excerpt, and code checks the quote.
+The verifier checks the choice against released source. If it fails, the next candidate is tried.
+Each record keeps the model, the prompt hash and the confidence. A code-search record is kept
+only when the model confirmed it: search alone is right less than half the time.
+
+**Transitive reachability (`--deep`).** Your project reaches the function in `Dn` through
+`D0 -> ... -> Dn`, and your code references only `D0`. scgraph walks the call graph backwards one
+package at a time through released source (shortest path only, so `not_called` means "not through
+this path"). Five mechanisms find calls that a name-based graph misses: resolved references with
+re-exports, dunders and properties through their class, functions read as values, code that runs
+at import, and `getattr(self, "visit_" + name)` dispatch.
+
+**The free-tier LLM client (`llm.py`).** One OpenRouter key gives 50 free requests a day. The
+client caches each answer by advisory, splits a failed batch in half, asks about the most
+downloaded packages first, tries models in the order of `SCGRAPH_LLM_MODELS`, skips for 24 hours a
+model that refuses the key (HTTP 403), waits out a per-minute limit, stops at the daily limit and
+keeps every answer. `--llm-cache-only` cannot send a request. `ernie-5.5-flash-preview` must
+reason and loops at temperature 0, so the client samples at 0.6.
+
+**Trust.** The ledger stores a claim `advisory -> symbol` under the advisory id and each alias,
+with confidence and a source string. It is hash-chained. A better inference retracts a claim and
+earlier views keep it. The manifest has the SHA-256 of the data and an Ed25519 signature
+(`signing.pub` in the repository, the private key outside it, extra `scgraph-cli[sign]`).
+`scgraph symbols export` writes one OSV patch per advisory
+(`affected[].ecosystem_specific.affected_functions`, provenance in `database_specific.scgraph`).
+scgraph sends nothing anywhere.
 
 ## Core engine
 

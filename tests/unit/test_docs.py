@@ -14,9 +14,6 @@ ALLOWED = {
     "ISSUES.md",
     "PERFORMANCE.md",
     "PRD.md",
-    "RESPONSIBLE-USE.md",
-    "SCAN.md",
-    "SYMBOLS.md",
 }
 LINK = re.compile(r"\]\(([^)\s]+)\)")
 
@@ -25,11 +22,10 @@ def test_docs_folder_holds_only_the_agreed_pages() -> None:
     assert {p.name for p in DOCS.iterdir()} == ALLOWED
 
 
-def test_memory_file_is_short_and_imports_the_shared_instructions() -> None:
-    memory = (ROOT / "MEMORY.md").read_text(encoding="utf-8").splitlines()
+def test_claude_file_is_short_and_imports_the_shared_instructions() -> None:
+    memory = (ROOT / "CLAUDE.md").read_text(encoding="utf-8").splitlines()
     assert len(memory) <= 150  # an agent reads it all at the start of each session
     assert "@docs/AGENTS.md" in memory
-    assert (ROOT / "CLAUDE.md").read_text(encoding="utf-8").strip() == "@MEMORY.md"
     assert len((DOCS / "AGENTS.md").read_text(encoding="utf-8").splitlines()) <= 200
 
 
@@ -48,7 +44,7 @@ def test_no_markdown_link_points_to_a_missing_file() -> None:
 
 
 def test_no_doc_has_a_secret_or_a_machine_path() -> None:
-    for page in [*DOCS.glob("*.md"), ROOT / "MEMORY.md"]:
+    for page in [*DOCS.glob("*.md"), ROOT / "CLAUDE.md"]:
         text = page.read_text(encoding="utf-8")
         assert "sk-or-v1" not in text, page
         assert "/Users/" not in text, page

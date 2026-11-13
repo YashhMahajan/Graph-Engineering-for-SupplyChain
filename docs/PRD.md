@@ -77,11 +77,11 @@ A flat list of package names cannot answer these questions. A path through a gra
 | Vulnerable function ranked first, 188 held-out Go advisories | 69.7% (58.5% baseline) |
 | LLM calls per scan | 0 |
 
-Sources: [PERFORMANCE.md](PERFORMANCE.md), [SYMBOLS.md](SYMBOLS.md), `results/metrics/`.
+Sources: the tables below, `results/metrics/`.
 
 ## Constraints
 
 - Python 3.11 or later. The core needs NumPy, PyArrow, SciPy and scikit-learn only.
 - npm and TypeScript support needs the optional extra `scgraph-cli[symbols-js]`.
 - Signing needs the optional extra `scgraph-cli[sign]`.
-- The LLM stage must work on a free tier: 50 requests a day. See [SYMBOLS.md](SYMBOLS.md).
+- The LLM stage must work on a free tier: 50 requests a day. See [AGENTS.md](AGENTS.md).

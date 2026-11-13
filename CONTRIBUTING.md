@@ -56,11 +56,11 @@ CI does these checks on each pull request. All checks must pass.
 - **Report negative results.** If a method does not help, write this in the notebook
   and in the docs.
 - **Text in docs and comments:** write Simplified Technical English (ASD-STE100): short
-  sentences, active voice, no contractions, no em dashes. Read `docs/AGENTS.md` and `MEMORY.md`
+  sentences, active voice, no contractions, no em dashes. Read `docs/AGENTS.md` and `CLAUDE.md`
   if you use an AI agent.
 - **Result numbers** are in `results/run_manifest.json` and `results/scorecard.json`.
   If a change moves a headline number, make the related `results/` files again and
-  update the numbers in `README.md` and `docs/SYMBOLS.md` in the same pull request.
+  update the numbers in `README.md` and `docs/PERFORMANCE.md` in the same pull request.
 
 ## Commits and pull requests
 
@@ -76,7 +76,7 @@ and range match. Refer to `docs/ARCHITECTURE.md`.
 
 ## Responsible use
 
-Read [`docs/RESPONSIBLE-USE.md`](docs/RESPONSIBLE-USE.md). Do not add features whose main
+Read [`docs/DATA-SOURCES.md`](docs/DATA-SOURCES.md) (section 12). Do not add features whose main
 use is attack, for example a list of names to squat or a crawler that lists exposed
 third-party repositories.
 

@@ -105,3 +105,48 @@ The package-level graph for the structure analysis has 6,682,795 edges.
 | Smoke | OSV (5 ecosystems) and a deps.dev sample | tens of MB |
 | Full, from release artifacts | Parquet tables and embeddings | 550 MB |
 | Full, from the start | Libraries.io tarball, OSV (8 ecosystems), GHSA clone | 25 GB |
+
+## 10. Lockfiles and SBOMs that `scgraph scan` reads
+
+| Lockfile | Ecosystem | Edges |
+|---|---|---|
+| `package-lock.json`, `npm-shrinkwrap.json`, `yarn.lock`, `pnpm-lock.yaml` (v6 to v9), `bun.lock` | npm | yes |
+| `poetry.lock`, `uv.lock` | PyPI | yes |
+| `requirements*.txt`, `Pipfile.lock` | PyPI | no (flat) |
+| `Cargo.lock`, `Gemfile.lock`, `composer.lock` | crates.io, RubyGems, Packagist | yes |
+| `go.mod`, `gradle.lockfile` | Go, Maven | no (flat) |
+| `*.cdx.json`, `bom.json` (CycloneDX), `*.spdx.json` (SPDX) | from each purl | yes |
+
+A prefixed name works (`api.uv.lock`). An SBOM component with no purl, an unsupported purl type or
+no version is skipped. Gradle lockfiles record no edges, and `pom.xml` is not read, because Maven
+resolves versions at build time. `bun.lockb` (binary) is not read.
+
+## 11. Build the symbols datasets
+
+The shipped datasets are `src/scgraph/symbols/data/*.jsonl` with a manifest and an Ed25519
+signature. Check them with `scgraph symbols verify`. After a change, run `scgraph symbols sign`.
+
+```bash
+python scripts/symbols/build_dataset.py --ecosystem pypi --popular 5000 --fix 1500 --search 150
+python scripts/symbols/build_dataset.py --ecosystem npm  --popular 3000 --fix 800 --search 100
+make symbols-refresh     # after 00:00 UTC: spends LLM requests (see AGENTS.md)
+```
+
+## 12. Responsible use
+
+scgraph is a defensive tool.
+
+- Scan projects that you own or may examine. Report a new malicious package to the registry and to
+  [ossf/malicious-packages](https://github.com/ossf/malicious-packages).
+- Do not use the typosquat list or the "does not exist" result to choose names for squatting.
+- Do not use exposure paths to attack a project. Follow its [security policy](../SECURITY.md).
+  Do not publish a list of exposed third-party repositories. Tell the maintainers first.
+- Do not send OSV patches from `scgraph symbols export` to a third party in bulk. A person must
+  read each patch first.
+- Be a good client of OSV, CISA KEV, FIRST EPSS and the registries: keep `~/.cache/scgraph`, use
+  `scgraph fetch-osv` with `--offline` for many repositories, keep the `User-Agent`, and do not
+  run many scans in parallel against public APIs.
+- Licenses: OSV and GHSA are CC BY 4.0, Libraries.io is CC BY-SA 4.0, CISA KEV is public domain,
+  FIRST EPSS is free with attribution. Name the sources when you publish results.
+- `not_called` is not proof. An abstention is a reason, not a guarantee. OSV can be late: a
+  malicious release can be live for hours before a `MAL-` record exists.
