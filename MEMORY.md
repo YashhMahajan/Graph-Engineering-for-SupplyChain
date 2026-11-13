@@ -25,16 +25,22 @@ State:
 - The datasets are signed. If you change a `*.jsonl` file in `src/scgraph/symbols/data/`, you must
   sign it again: `scgraph symbols sign`. The private key is `~/.config/scgraph/signing.key`.
 
-Open:
+Open (session paused on 2026-11-12; the user will ask to resume):
 
-0. The wider dataset build (`--popular 5000` for PyPI, `3000` for npm) did not finish. It is heavy
-   and slow. Run it on a quiet machine. The datasets in the repository are the smaller signed ones.
-1. Run `make symbols-refresh` after 00:00 UTC. It answers npm code-search records and refreshes 17
-   stale Go LLM answers. The free tier was used up on 2026-11-12.
-2. Tag and publish 1.4.0 when the user says so.
-3. Send OSV patches to an advisory database only when the user says so.
+1. **Release 1.4.0 is approved by the user.** PR #27 (docs pins to v1.4.0) is open. Steps: merge
+   PR #27 when its checks pass, then run `gh workflow run release.yml` (it tags `v1.4.0` and
+   publishes the GitHub Release), then `gh workflow run publish-pypi.yml -f tag=v1.4.0`.
+2. **Points 5 and 9 need the LLM budget.** It resets at 00:00 UTC. Check `scgraph symbols budget`.
+   The `symbols-refresh` change (moderate sizes, `nice`, 30 + 5 + 5 requests) is in `git stash`
+   on this machine. If the stash is gone, edit the Makefile target to these values. Then run
+   `make symbols-refresh`, check `scgraph symbols verify`, and open a pull request with the
+   changed data and `results/metrics`. It answers npm code-search records and re-asks Go advisories.
+3. **Point 7, wider datasets.** The build with `--popular 5000` (PyPI) and `3000` (npm) did not
+   finish: it is heavy. The verify stage is now parallel. Run it on a quiet machine, with `nice`.
+   Maven and Cargo scan-side support is out of scope.
+4. Send OSV patches to an advisory database only when the user says so.
 
-Next step if the user gives no task: run item 1, then sign and open a pull request.
+Not tested: PR #26 was merged without a full CI watch, by the user's choice. CI on `main` passed.
 
 ## Long-term memory
 
