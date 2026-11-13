@@ -59,9 +59,9 @@ eval: ## Run the evaluation suite (needs data/graph and network)
 	$(BIN)/python scripts/run_evaluation.py --all
 
 symbols-refresh: ## Spend the free-tier LLM budget on what is open, then sign (run after the daily reset)
-	$(BIN)/python scripts/symbols/build_dataset.py --ecosystem npm --popular 3000 --fix 800 --search 100 --llm-requests 20 --search-needs-llm --merge
-	$(BIN)/python scripts/symbols/build_dataset.py --ecosystem pypi --popular 5000 --fix 1500 --search 150 --llm-requests 20 --search-needs-llm --merge
-	$(BIN)/python scripts/symbols/eval_go.py --llm-requests 6 --llm-batch 6
+	nice -n 19 $(BIN)/python scripts/symbols/build_dataset.py --ecosystem npm --popular 1500 --fix 400 --search 60 --llm-requests 30 --search-needs-llm --merge --workers 4
+	nice -n 19 $(BIN)/python scripts/symbols/build_dataset.py --ecosystem pypi --popular 2000 --fix 600 --search 100 --llm-requests 5 --search-needs-llm --merge --workers 4
+	nice -n 19 $(BIN)/python scripts/symbols/eval_go.py --llm-requests 5 --llm-batch 6
 	$(BIN)/python -m scgraph.cli symbols sign
 
 symbols-eval: ## Vulnerable-symbol inference on the Go database (model-free stages; network once)

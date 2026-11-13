@@ -47,8 +47,8 @@ Details and every limit: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) and [`do
 | Measured on | Before | After |
 |---|---|---|
 | **Alerts on a real project with a vulnerable transitive dependency** (`requests 2.25.0` -> `urllib3`, 20 alerts) | 0 of 20 answered | **12 of 20**: 8 reachable and 4 not called when the code uses `requests`; 12 not called when it only declares it |
-| Advisories with a named vulnerable function, PyPI and npm | 0% | **837 verified records** (536 PyPI, 301 npm) for 165 of the most-downloaded packages, each with its evidence |
-| Vulnerable function ranked first, 188 held-out Go advisories | 58.5% (largest change) | **69.7%** model-free, 70.7% with an LLM on the uncertain ones |
+| Advisories with a named vulnerable function, PyPI and npm | 0% | **861 verified records** (541 PyPI, 320 npm) for 167 of the most-downloaded packages, each with its evidence |
+| Vulnerable function ranked first, 188 held-out Go advisories | 58.5% (largest change) | **69.7%** model-free, 71.3% with an LLM on the uncertain ones |
 | Functions that really ran in a dependency, reached by the transitive analysis (501 functions, `requests` and `flask` under a profiler) | 57.1% | **95.4%** |
 | No fix link: function found by search, 48 held-out Go advisories | 27.1% (text search) | **43.8%** with the release diff, 52.1% with an LLM |
 | LLM calls per scan | | **0** |

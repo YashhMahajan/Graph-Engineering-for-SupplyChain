@@ -27,7 +27,7 @@ the ASD-STE100 rules for Simplified Technical English. When you find a new issue
   unchanged. The verifier abstains.
 - npm: *public* means *exported*. A minified bundle cannot be verified, because the names are
   changed. A TypeScript fix is matched to the compiled release by function name.
-- The LLM stage has a small sample. The gain on 37 Go advisories is not significant (p = 0.625).
+- The LLM stage has a small sample. The gain on 67 Go advisories is not significant (p = 0.453).
 - The free tier gives 50 requests a day. The model `ernie-5.5-flash-preview` reasons at length.
   About 1 batch in 5 loops until its token limit. The client splits a failed batch and retries.
 - `thinkingmachines/inkling-2-small:free` answers HTTP 403 to an ordinary API key.

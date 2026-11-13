@@ -109,7 +109,7 @@ newest 188 test. A missing diff or candidate counts as a miss.
 | Largest change first (baseline) | 58.5% | 76.6% | 0.674 |
 | **Hand-set ranker (shipped)** | **69.7%** | 78.7% | 0.741 |
 | Logistic regression (trained on 436) | 70.7% | 78.7% | 0.746 |
-| Hand-set ranker + LLM on the uncertain ones | 70.7% | 78.2% | 0.748 |
+| Hand-set ranker + LLM on the uncertain ones | 71.3% | 78.7% | 0.752 |
 | Ceiling: a gold symbol is among the candidates | 80.9% | | |
 
 - Callers matter. Changed functions alone hold a gold symbol for 78.7%. Callers raise it to 80.9%.
@@ -117,8 +117,8 @@ newest 188 test. A missing diff or candidate counts as a miss.
   trained model is 1 point ahead on the test split. That is noise at 188 advisories. Choosing it
   now would use the test split.
 - The LLM was asked about the advisories whose top-2 margin was below 0.25. The budget answered
-  37 of them. On those, top-1 went from 56.8% to 62.2%. The LLM fixed 3 top picks and broke 1
-  (McNemar p = 0.625). This is not significant. Every quote was in the excerpt.
+  67 of them. On those, top-1 went from 58.2% to 62.7%. The LLM fixed 5 top picks and broke 2
+  (McNemar p = 0.453). This is not significant. Every quote was in the excerpt.
 
 ### Engine B: no fix link (48 Go advisories, searched as if the link were missing)
 
