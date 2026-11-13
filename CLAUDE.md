@@ -21,19 +21,18 @@ State:
 
 - `main` has the symbols work and PR #27 (docs pinned to v1.4.0). The docs are 6 files.
   `MEMORY.md` is gone: this file holds the memory.
-- Version 1.4.0 is set in `pyproject.toml`, `CITATION.cff` and the changelog. The user approved
-  the release and the tag on 2026-11-13. Steps: merge the data PR, then
-  `gh workflow run release.yml` (tags `v1.4.0`, publishes the GitHub Release), then
-  `gh workflow run publish-pypi.yml -f tag=v1.4.0`. If a tool blocks the command, ask the user to
-  run it.
+- Release 1.4.0 is **tagged and on GitHub** (`v1.4.0`, 2026-11-13, with wheel, sdist and
+  `SHA256SUMS`). It is **not on PyPI**: `publish-pypi.yml` failed with `invalid-publisher`.
+  PyPI has no `scgraph-cli` project and no trusted publisher. The user must add a pending
+  publisher on pypi.org (owner `YashhMahajan`, repo `Graph-Engineering-for-SupplyChain`,
+  workflow `publish-pypi.yml`, environment `pypi`). Then run
+  `gh workflow run publish-pypi.yml -f tag=v1.4.0`.
 - The datasets are signed. If you change a `*.jsonl` file in `src/scgraph/symbols/data/`, you must
   sign it again: `scgraph symbols sign`. The private key is `~/.config/scgraph/signing.key`.
 
 Open:
 
-1. **Data refresh (points 5 and 9).** Branch `data/symbols-refresh-2` runs `make symbols-refresh`
-   (30 + 5 + 5 LLM requests). Then: `scgraph symbols verify`, `scgraph symbols sign`, tests, ruff,
-   mypy, a pull request with the changed data and `results/metrics`. Merge when CI passes.
+1. **PyPI upload of 1.4.0.** See State above. The data refresh is done (PR #28).
 2. **Point 7, wider datasets.** The build with `--popular 5000` (PyPI) and `3000` (npm) did not
    finish: it is heavy. Run it on a quiet machine, with `nice`, never with the refresh.
    Maven and Cargo scan-side support is out of scope.
