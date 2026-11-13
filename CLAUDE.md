@@ -46,8 +46,9 @@ User preferences:
 - The user wants small, simple changes and lean docs. Do not add features that no one asked for.
 - The user wants numbers in the README that engineers see first. Use measured numbers only.
 - The user wants Simplified Technical English in the docs.
-- The user allows an agent to merge a pull request when all CI checks pass. The user does not
-  allow publishing a release or sending anything to another project.
+- The user allows an agent to merge a pull request when all CI checks pass. The user allows a release
+  and a tag only when the user says so for that version. The user does not allow sending anything
+  to another project.
 
 Decisions and reasons:
 
