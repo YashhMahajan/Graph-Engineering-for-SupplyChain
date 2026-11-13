@@ -42,7 +42,7 @@ Measured with `make bench` on 2M versions and 8M edges. Details: [`docs/PERFORMA
 npm advisories do not (0% name it in the OSV snapshot used here). scgraph now **recovers the
 function from the fix commit and the released source at build time**, verifies it, follows it
 through the dependency path, and ships a data file that a scan reads offline.
-Details and every limit: [`docs/SYMBOLS.md`](docs/SYMBOLS.md). Numbers: [`results/metrics/`](results/metrics).
+Details and every limit: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) and [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md). Numbers: [`results/metrics/`](results/metrics).
 
 | Measured on | Before | After |
 |---|---|---|
@@ -125,7 +125,7 @@ claude mcp add scgraph -- scgraph mcp      # tools: check_package, scan_lockfile
 The hook denies `npm install`, `pip install`, `npx`, `uvx` and the like when a package
 is blocked, and asks you when it gets a warning. If a lookup fails, the result is
 `unverified`, never `allow`. Setup, the GitHub Action and pre-commit:
-[`docs/SCAN.md`](docs/SCAN.md). Rules for fair use: [`docs/RESPONSIBLE-USE.md`](docs/RESPONSIBLE-USE.md).
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). Rules for fair use: [`docs/DATA-SOURCES.md`](docs/DATA-SOURCES.md) (section 12).
 
 ### Know whether you call the vulnerable function
 
@@ -140,8 +140,8 @@ On a project that pins `requests 2.25.0`, `--deep` follows `app -> requests -> u
 released source and labels each alert, for example
 `vulnerable function called (inferred, 2 hops)`. It never suppresses an alert or changes the
 exit code: `not_called` means *no reference found*, an ordering for the queue, not a pass.
-Dataset, evaluation, ablation and limits: [`docs/SYMBOLS.md`](docs/SYMBOLS.md); usage:
-[`docs/SCAN.md`](docs/SCAN.md); the notebook's Part XI shows it step by step.
+Method: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md); evaluation and ablation:
+[`docs/PERFORMANCE.md`](docs/PERFORMANCE.md); the notebook's Part XI shows it step by step.
 
 ---
 
@@ -438,7 +438,7 @@ notebooks/            the notebook, committed with its full-run outputs and 14 f
 scripts/              argparse CLIs: acquire, build graph, run pipeline, run evaluation, fetch artifacts, extra figures
 tests/                unit tests plus a smoke-pipeline integration test
 results/              committed evidence: 17 figures, 25 metric files, 11 exposure reports, 11 SBOMs
-docs/                 9 pages: PRD, architecture, data sources, issues, performance, agents, scan, symbols, responsible use
+docs/                 6 pages: PRD, architecture, data sources, issues, performance, agents
 CLAUDE.md             instructions and memory for AI agents
 data/                 not committed; scripts regenerate or fetch it (see data/README.md)
 ```
@@ -489,14 +489,11 @@ The corpus is a 2020-01-12 snapshot, which is why the resolver comparison is rep
 | page | what it covers |
 |---|---|
 | [PRD.md](docs/PRD.md) | the problem, users, goals, non-goals, features and their status |
-| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | the layers, the CSR store, the alert ladder, the core engine, terms, how to reproduce |
-| [DATA-SOURCES.md](docs/DATA-SOURCES.md) | each input: version, license, how it is read, its limits |
+| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | the layers, the CSR store, the alert ladder, the `scgraph` commands, the symbols method, the core engine, how to reproduce |
+| [DATA-SOURCES.md](docs/DATA-SOURCES.md) | each input: version, license, lockfiles, dataset builds, responsible use |
 | [ISSUES.md](docs/ISSUES.md) | open work, known limits, past bugs, rejected changes |
-| [PERFORMANCE.md](docs/PERFORMANCE.md) | measured speed, security changes, how to measure again |
+| [PERFORMANCE.md](docs/PERFORMANCE.md) | measured speed, security changes, symbols measurements, how to measure again |
 | [AGENTS.md](docs/AGENTS.md) | the shared instructions for AI agents: commands, rules, budget |
-| [SCAN.md](docs/SCAN.md) | the `scgraph` command: scan, diff, check, hook, MCP, GitHub Action, pre-commit |
-| [SYMBOLS.md](docs/SYMBOLS.md) | vulnerable functions and reachability: method, measurements, trust |
-| [RESPONSIBLE-USE.md](docs/RESPONSIBLE-USE.md) | how to use scgraph and the public data services fairly |
 
 ---
 

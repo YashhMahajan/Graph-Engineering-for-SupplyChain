@@ -9,7 +9,7 @@ the ASD-STE100 rules for Simplified Technical English. When you find a new issue
 |---|---|---|
 | npm code-search records | Open | Run `make symbols-refresh` after the daily LLM reset (00:00 UTC). Search records need an LLM confirmation. |
 | 17 stale Go LLM answers | Open | The same command refreshes them. They need about 4 requests. |
-| Wider datasets | Open | Run the two `build_dataset.py` commands in [SYMBOLS.md](SYMBOLS.md) (`--popular 5000` and `3000`). It takes hours and loads the machine. Then run `scgraph symbols sign`. |
+| Wider datasets | Open | Run the two `build_dataset.py` commands in [DATA-SOURCES.md](DATA-SOURCES.md) (`--popular 5000` and `3000`). It takes hours and loads the machine. Then run `scgraph symbols sign`. |
 | Release 1.4.0 | Ready, not published | The version, the changelog and the citation are set. Create the tag when you want the release. |
 | Scan-side support for Maven and Cargo | Not planned | There is no parser and no dataset for them. Maven and Cargo scans still work. They do not check the function. |
 | Upstream OSV patches | Not sent | `scgraph symbols export` writes the patches. A person must send them to an advisory database. |

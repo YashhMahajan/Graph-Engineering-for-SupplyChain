@@ -19,7 +19,7 @@ Last updated: 2026-11-12.
 
 State:
 
-- `main` has the symbols work (docs reduced to 9 files, `CLAUDE.md` holds the memory; the last PR was merged without a full CI watch by the user's choice): inference, `--reachability`, `--deep` (PyPI, npm), ledger claims,
+- `main` has the symbols work (docs reduced to 6 files, `CLAUDE.md` holds the memory; the last PR was merged without a full CI watch by the user's choice): inference, `--reachability`, `--deep` (PyPI, npm), ledger claims,
   signed datasets, OSV export, `scgraph ask`, Go and npm reachability, the weekly refresh workflow.
 - Version 1.4.0 is set in `pyproject.toml`, `CITATION.cff` and the changelog. It is **not tagged**.
 - The datasets are signed. If you change a `*.jsonl` file in `src/scgraph/symbols/data/`, you must
@@ -63,7 +63,7 @@ Decisions and reasons:
 - **Answers are cached per advisory.** A changed prompt makes old answers miss. Change it rarely.
 - **No search records without an LLM confirmation.** Search alone is right less than half the time.
 - **Maven and Cargo scan-side support is out of scope.** No parser and no dataset exist for them.
-- **The docs are 9 files in `docs/`.** Do not add more without a reason.
+- **The docs are 6 files in `docs/`.** Do not add more without a reason.
 
 Facts about the environment:
 

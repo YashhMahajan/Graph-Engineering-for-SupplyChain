@@ -26,7 +26,7 @@ This file records all important changes to this project. The format follows
   fixed release) when there is no fix link. An LLM chooses among the top candidates only when
   the ranker is unsure: it answers with an option id, must quote its evidence, and its choice
   still has to pass the verifier. Every affected range of a package is tried, because a fix
-  commit belongs to one maintained line. See `docs/SYMBOLS.md`.
+  commit belongs to one maintained line. See `docs/ARCHITECTURE.md`.
 - **Entry points**: the public functions of a release that reach the vulnerable one, with
   re-export aliases (`requests.get` for `requests.api.get`), so project code can be matched.
 - **npm and TypeScript**: JavaScript is parsed with tree-sitter (optional extra

@@ -45,4 +45,4 @@ without acquiring any data. The numbers are reproduced by
 
 Fresh runs write to `data/out/`, not here, so a re-run never clobbers these reference
 files. To update the reference after inspecting a run, copy the changed files across and
-update the numbers in `README.md` and `docs/SYMBOLS.md` in the same commit.
+update the numbers in `README.md` and `docs/PERFORMANCE.md` in the same commit.

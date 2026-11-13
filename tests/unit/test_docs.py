@@ -14,9 +14,6 @@ ALLOWED = {
     "ISSUES.md",
     "PERFORMANCE.md",
     "PRD.md",
-    "RESPONSIBLE-USE.md",
-    "SCAN.md",
-    "SYMBOLS.md",
 }
 LINK = re.compile(r"\]\(([^)\s]+)\)")
 
