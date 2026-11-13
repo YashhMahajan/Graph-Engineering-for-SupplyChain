@@ -439,7 +439,7 @@ scripts/              argparse CLIs: acquire, build graph, run pipeline, run eva
 tests/                unit tests plus a smoke-pipeline integration test
 results/              committed evidence: 17 figures, 25 metric files, 11 exposure reports, 11 SBOMs
 docs/                 9 pages: PRD, architecture, data sources, issues, performance, agents, scan, symbols, responsible use
-MEMORY.md             instructions and memory for AI agents (CLAUDE.md imports it)
+CLAUDE.md             instructions and memory for AI agents
 data/                 not committed; scripts regenerate or fetch it (see data/README.md)
 ```
 

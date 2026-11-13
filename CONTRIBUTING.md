@@ -56,7 +56,7 @@ CI does these checks on each pull request. All checks must pass.
 - **Report negative results.** If a method does not help, write this in the notebook
   and in the docs.
 - **Text in docs and comments:** write Simplified Technical English (ASD-STE100): short
-  sentences, active voice, no contractions, no em dashes. Read `docs/AGENTS.md` and `MEMORY.md`
+  sentences, active voice, no contractions, no em dashes. Read `docs/AGENTS.md` and `CLAUDE.md`
   if you use an AI agent.
 - **Result numbers** are in `results/run_manifest.json` and `results/scorecard.json`.
   If a change moves a headline number, make the related `results/` files again and
